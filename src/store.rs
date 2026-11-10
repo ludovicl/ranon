@@ -62,6 +62,15 @@ impl Store {
         Ok(())
     }
 
+    /// Replaces known tokens with their real values; unknown tokens are left as they are.
+    pub fn unmask(&self, text: &str, mapping: &HashMap<String, String>) -> String {
+        static TOKEN: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+        TOKEN
+            .get_or_init(|| regex::Regex::new(r"\b[A-Z]+_[0-9a-f]{6}\b").unwrap())
+            .replace_all(text, |c: &regex::Captures| mapping.get(&c[0]).cloned().unwrap_or_else(|| c[0].to_string()))
+            .into_owned()
+    }
+
     pub fn mapping(&self) -> io::Result<HashMap<String, String>> {
         let path = self.path("map.tsv");
         if !path.exists() {

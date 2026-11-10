@@ -1,9 +1,11 @@
-//! Masking passes: tables by column name, key/value pairs, value patterns, then known names in free text.
+//! Masking passes: JSON documents by key path, tables by column name, key/value pairs, value patterns,
+//! then known names in free text.
 
 use crate::names::{Names, word_regex};
 use crate::rules::{column_kind, is_nullish, is_token, value_patterns};
 use crate::store::Store;
 use regex::{Captures, Regex};
+use serde_json::Value;
 use std::io;
 use std::sync::OnceLock;
 
@@ -18,6 +20,7 @@ fn re(cell: &'static OnceLock<Regex>, pattern: &str) -> &'static Regex {
 
 impl Masker {
     pub fn open() -> io::Result<Self> {
+        crate::rules::load().map_err(io::Error::other)?;
         let store = Store::open()?;
         let names = Names::load(&store);
         Ok(Self { store, names })
@@ -28,10 +31,54 @@ impl Masker {
     }
 
     pub fn mask_text(&mut self, text: &str) -> String {
-        let text = self.mask_tables(text);
+        let text = self.mask_json_text(text);
+        let text = self.mask_tables(&text);
         let text = self.mask_key_values(&text);
         let text = self.mask_patterns(&text);
         self.mask_names(&text)
+    }
+
+    /// A whole JSON document (Stripe CLI, API responses, MCP tools): masked by key with its parent as context.
+    fn mask_json_text(&mut self, text: &str) -> String {
+        let trimmed = text.trim();
+        if !(trimmed.starts_with('{') || trimmed.starts_with('[')) {
+            return text.to_string();
+        }
+        let Ok(mut value) = serde_json::from_str::<Value>(trimmed) else { return text.to_string() };
+        self.mask_json(&mut value);
+        let masked =
+            if trimmed.contains('\n') { serde_json::to_string_pretty(&value) } else { serde_json::to_string(&value) };
+        masked.unwrap_or_else(|_| text.to_string())
+    }
+
+    pub fn mask_json(&mut self, value: &mut Value) {
+        self.mask_json_at(value, "", None);
+    }
+
+    /// The kind of a key comes from `parent.key` (parent = the object's `"object"` type, as in Stripe and Notion,
+    /// else the enclosing key), then the key alone, then the enclosing sensitive key (`address`, `dob`…).
+    fn mask_json_at(&mut self, value: &mut Value, parent: &str, inherited: Option<&'static str>) {
+        match value {
+            Value::Object(map) => {
+                let context = map.get("object").and_then(Value::as_str).unwrap_or(parent).to_string();
+                for (key, child) in map.iter_mut() {
+                    let kind = column_kind(&format!("{context}.{key}")).or_else(|| column_kind(key)).or(inherited);
+                    self.mask_json_at(child, key, kind);
+                }
+            }
+            Value::Array(items) => items.iter_mut().for_each(|item| self.mask_json_at(item, parent, inherited)),
+            Value::String(text) => {
+                if let Some(kind) = inherited {
+                    *text = self.mask_cell(kind, text);
+                }
+            }
+            Value::Number(number) => {
+                if let Some(kind) = inherited {
+                    *value = Value::String(self.store.token(kind, &number.to_string()));
+                }
+            }
+            _ => {}
+        }
     }
 
     fn mask_cell(&mut self, kind: &str, cell: &str) -> String {

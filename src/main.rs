@@ -36,12 +36,17 @@ enum Cmd {
     Mask,
     /// Restore real values in stdin from the local token map
     Unmask,
-    /// Agent hook (supported: claude)
+    /// Agent hook (supported: claude, for PostToolUse masking and PreToolUse unmasking)
     Hook { agent: String },
     /// Manage the hashed dictionary of person names
     Dict {
         #[command(subcommand)]
         action: DictAction,
+    },
+    /// Show where rules are loaded from, and the kind of the given column or key names
+    Rules {
+        /// e.g. `first_name billing_details.name status`
+        names: Vec<String>,
     },
     /// Create shims (symlinks to ranon) for the given commands, to put first in the agent's PATH
     Init {
@@ -93,6 +98,7 @@ fn main() {
         Cmd::Dict { action: DictAction::Build { stdin, db_url_env, sql, replace } } => {
             dict_build(stdin, &db_url_env, sql.as_deref().unwrap_or_default(), replace)
         }
+        Cmd::Rules { names } => rules(&names),
         Cmd::Init { shim_dir, commands } => init(&shim_dir, &commands),
         Cmd::Run(argv) => match argv.split_first() {
             Some((name, rest)) => proxy::run(&name.to_string_lossy(), rest),
@@ -118,10 +124,7 @@ fn filter(unmask: bool) -> i32 {
     };
     let output = if unmask {
         let mapping = masker.store.mapping().unwrap_or_default();
-        regex::Regex::new(r"\b[A-Z]+_[0-9a-f]{6}\b")
-            .unwrap()
-            .replace_all(&input, |c: &regex::Captures| mapping.get(&c[0]).cloned().unwrap_or_else(|| c[0].to_string()))
-            .into_owned()
+        masker.store.unmask(&input, &mapping)
     } else {
         let masked = masker.mask_text(&input);
         if let Err(error) = masker.persist() {
@@ -130,6 +133,17 @@ fn filter(unmask: bool) -> i32 {
         masked
     };
     std::io::stdout().write_all(output.as_bytes()).ok();
+    0
+}
+
+fn rules(names: &[String]) -> i32 {
+    if let Err(error) = rules::load() {
+        return fail(&error);
+    }
+    println!("{}", rules::summary());
+    for name in names {
+        println!("{name}: {}", rules::explain(name));
+    }
     0
 }
 

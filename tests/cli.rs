@@ -23,6 +23,7 @@ fn run_with(program: &Path, home: &Path, args: &[&str], stdin: &str) -> (String,
     let mut child = Command::new(program)
         .args(args)
         .env("RANON_HOME", home)
+        .env("RANON_CONFIG_DIR", home)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -293,4 +294,150 @@ fn proxy_reports_missing_command() {
     let (_, err, code) = run_with(Path::new(BIN), &home(), &["definitely-not-a-command"], "");
     assert_eq!(code, 127);
     assert!(err.contains("no real"));
+}
+
+// --- JSON documents and user rules ----------------------------------------------------------------
+
+const STRIPE_CUSTOMER: &str = r#"{
+  "id": "cus_NffrFeUfNV2Hib",
+  "object": "customer",
+  "name": "Jenny Rosen",
+  "email": "jennyrosen@example.com",
+  "phone": "+33612345678",
+  "address": { "city": "Lyon", "country": "FR", "line1": "12 rue des Lilas", "postal_code": "69003" },
+  "balance": 0,
+  "currency": "eur",
+  "invoice_settings": { "default_payment_method": "pm_1" },
+  "metadata": {}
+}"#;
+
+#[test]
+fn stripe_customer_json() {
+    let out = mask(&home(), STRIPE_CUSTOMER);
+    assert_hidden(&out, &["Jenny", "Rosen", "jennyrosen@", "612345678", "Lyon", "Lilas", "69003"]);
+    for kept in ["cus_NffrFeUfNV2Hib", "\"currency\": \"eur\"", "pm_1", "\"balance\": 0"] {
+        assert!(out.contains(kept), "{kept} missing in:\n{out}");
+    }
+}
+
+#[test]
+fn stripe_payment_method_and_connect_person() {
+    let pm = r#"{"object":"payment_method","billing_details":{"name":"Jenny Rosen","email":null},"card":{"brand":"visa","last4":"4242"}}"#;
+    let out = mask(&home(), pm);
+    assert_hidden(&out, &["Jenny"]);
+    assert!(out.contains(r#""last4":"4242""#) && out.contains(r#""email":null"#), "{out}");
+
+    let person =
+        r#"{"object":"person","first_name":"Jenny","dob":{"day":12,"month":3,"year":1985},"id_number_provided":true}"#;
+    let out = mask(&home(), person);
+    assert_hidden(&out, &["Jenny", "1985", r#""day":12"#]);
+    assert!(out.contains(r#""id_number_provided":true"#), "{out}");
+}
+
+#[test]
+fn hook_masks_stripe_cli_and_structured_mcp_responses() {
+    let updated = hook(&home(), bash("stripe customers retrieve cus_1", STRIPE_CUSTOMER)).unwrap();
+    assert_hidden(&updated.to_string(), &["Jenny", "Lilas"]);
+
+    let payload = serde_json::json!({ "tool_name": "mcp__notion__query", "tool_input": {},
+        "tool_response": { "results": [{ "object": "page", "properties": { "Email": { "type": "email", "email": "a@b.fr" } } }] } });
+    let updated = hook(&home(), payload).unwrap();
+    assert_hidden(&updated.to_string(), &["a@b.fr"]);
+}
+
+#[test]
+fn user_rules_file_extends_builtins() {
+    let home = home();
+    std::fs::write(
+        home.join("rules.toml"),
+        r#"
+keep = ["^city$"]
+[[column]]
+pattern = "^(nom|prénom)$"
+kind = "PERSON"
+[[value]]
+pattern = '\bPI-\d{4}\b'
+kind = "TICKET"
+"#,
+    )
+    .unwrap();
+    let out = mask(&home, "id\tnom\tcity\n1\tDupont\tLyon\n\nvoir PI-1234\n");
+    assert_hidden(&out, &["Dupont", "PI-1234"]);
+    assert!(out.contains("Lyon") && out.contains("TICKET_"), "{out}");
+
+    let (listing, _, code) = run_with(Path::new(BIN), &home, &["rules", "prénom", "status"], "");
+    assert_eq!(code, 0);
+    assert!(listing.contains("prénom: PERSON") && listing.contains("status: kept visible"), "{listing}");
+}
+
+#[test]
+fn invalid_rules_file_fails_closed() {
+    let home = home();
+    std::fs::write(home.join("rules.toml"), "[[column]]\npattern = \"(\"\nkind = \"PERSON\"\n").unwrap();
+    let (out, err, code) = run_with(Path::new(BIN), &home, &["mask"], "email\njean@x.fr\n");
+    assert_ne!(code, 0);
+    assert!(out.is_empty() && err.contains("invalid pattern"), "{out}{err}");
+
+    let updated = hook(&home, bash("psql -c q", "email\njean@x.fr")).unwrap();
+    assert!(updated["stdout"].as_str().unwrap().contains("masking failed"));
+}
+
+#[test]
+fn notion_people_and_users_are_masked() {
+    let page = r#"{"object":"page","properties":{
+  "Assignee":{"type":"people","people":[{"object":"user","id":"u1","name":"Jean Dupont","type":"person","person":{"email":"jean@example.com"}}]},
+  "Status":{"type":"status","status":{"name":"In progress"}},
+  "Name":{"type":"title","title":[{"plain_text":"Refund order 42"}]}}}"#;
+    let out = mask(&home(), page);
+    assert_hidden(&out, &["Jean Dupont", "jean@example.com"]);
+    for kept in ["In progress", "Refund order 42", "\"id\": \"u1\""] {
+        assert!(out.contains(kept), "{kept} missing in:\n{out}");
+    }
+}
+
+#[test]
+fn rules_d_files_are_loaded_and_named() {
+    let home = home();
+    std::fs::create_dir_all(home.join("rules.d")).unwrap();
+    std::fs::write(home.join("rules.d/notion.toml"), "[[column]]\npattern = '^client$'\nkind = \"PERSON\"\n").unwrap();
+    std::fs::write(home.join("rules.d/leeto.toml"), "keep = ['^city$']\ncommands = ['composio']\n").unwrap();
+    let (listing, _, code) = run_with(Path::new(BIN), &home, &["rules", "Client", "city", "iban", "status"], "");
+    assert_eq!(code, 0);
+    for line in [
+        "Client: PERSON (notion.toml)",
+        "city: kept visible (keep in leeto.toml)",
+        "iban: IBAN (built-in payments)",
+        "status: kept visible",
+        "commands: composio",
+    ] {
+        assert!(listing.contains(line), "{line} missing in:\n{listing}");
+    }
+    let updated = hook(&home, bash("composio execute GMAIL_FETCH_EMAILS", "From: paul@example.com")).unwrap();
+    assert_hidden(&updated.to_string(), &["paul@example.com"]);
+}
+
+fn pre_hook(home: &Path, tool_input: serde_json::Value) -> Option<serde_json::Value> {
+    let payload = serde_json::json!({ "hook_event_name": "PreToolUse", "tool_name": "mcp__notion__notion-create-comment",
+        "tool_input": tool_input });
+    let out = ranon(home, &["hook", "claude"], &payload.to_string());
+    (!out.trim().is_empty())
+        .then(|| serde_json::from_str::<serde_json::Value>(&out).unwrap()["hookSpecificOutput"].clone())
+}
+
+#[test]
+fn pre_tool_use_restores_real_values_and_asks() {
+    let home = home();
+    let masked = mask(&home, "email\njean@example.com\n");
+    let token = masked.lines().nth(1).unwrap().trim().to_string();
+    assert!(token.starts_with("EMAIL_"), "{masked}");
+
+    let output = pre_hook(&home, serde_json::json!({ "page_id": "p1", "rich_text": [{ "text": { "content": format!("Contact {token}, unknown PERSON_000000") } }] })).unwrap();
+    assert_eq!(output["permissionDecision"], "ask");
+    assert_eq!(output["updatedInput"]["page_id"], "p1");
+    assert_eq!(
+        output["updatedInput"]["rich_text"][0]["text"]["content"],
+        "Contact jean@example.com, unknown PERSON_000000"
+    );
+
+    assert!(pre_hook(&home, serde_json::json!({ "page_id": "p1", "content": "no token here" })).is_none());
 }
