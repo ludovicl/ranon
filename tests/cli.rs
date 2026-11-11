@@ -441,3 +441,224 @@ fn pre_tool_use_restores_real_values_and_asks() {
 
     assert!(pre_hook(&home, serde_json::json!({ "page_id": "p1", "content": "no token here" })).is_none());
 }
+
+// --- formats that used to leak -------------------------------------------------------------------
+
+#[test]
+fn camel_case_keys_are_masked() {
+    let out = mask(
+        &home(),
+        r#"{"dateOfBirth":"1990-01-01","billingAddress":{"line1":"1 rue X"},"socialSecurityNumber":"190017500000000","userEmail":"zoe@example.com","userStatus":"active"}"#,
+    );
+    assert_hidden(&out, &["1990-01-01", "1 rue X", "190017500000000", "zoe@example.com"]);
+    assert!(out.contains(r#""userStatus":"active""#), "{out}");
+}
+
+#[test]
+fn slack_user_columns_and_objects_are_masked() {
+    let out = mask(&home(), "msgID,userID,userName,realName,text\n1,U1,zoe.xyz,Zoe Xyz,hello\n");
+    assert_hidden(&out, &["zoe.xyz", "Zoe Xyz"]);
+    assert!(out.contains("1,U1,PERSON_") && out.contains(",hello"), "{out}");
+
+    let out = mask(&home(), r#"{"id":"U1","real_name":"Zoe Xyz","profile":{"display_name":"zoe"}}"#);
+    assert_hidden(&out, &["Zoe Xyz", "zoe\""]);
+}
+
+#[test]
+fn json_after_a_banner_and_json_lines_are_masked_by_key_path() {
+    let banner =
+        "Running rails runner on app... up, run.1234\n{\"customer\":{\"name\":\"Zoe Xyz\",\"plan\":\"pro\"}}\n";
+    let out = mask(&home(), banner);
+    assert_hidden(&out, &["Zoe Xyz"]);
+    assert!(out.starts_with("Running rails runner on app... up, run.1234\n"), "{out}");
+    assert!(out.contains(r#""plan":"pro""#), "{out}");
+
+    let lines = "{\"object\":\"customer\",\"name\":\"Zoe Xyz\"}\n{\"object\":\"customer\",\"name\":\"Ana Abc\"}\n";
+    let out = mask(&home(), lines);
+    assert_hidden(&out, &["Zoe Xyz", "Ana Abc"]);
+    assert_eq!(out.lines().count(), 2, "{out}");
+
+    let pretty = "done\n{\n  \"customer\": {\n    \"name\": \"Zoe Xyz\"\n  }\n}\nbye\n";
+    let out = mask(&home(), pretty);
+    assert_hidden(&out, &["Zoe Xyz"]);
+    assert!(out.starts_with("done\n{\n") && out.ends_with("}\nbye\n"), "{out}");
+}
+
+#[test]
+fn text_that_only_looks_like_json_is_left_alone() {
+    let text = "[1] id=1 status=ok\n{Lyon,Paris}\n[link](https://example.org)\n";
+    assert_eq!(mask(&home(), text), text);
+}
+
+#[test]
+fn json_in_a_csv_cell_is_masked() {
+    let out = mask(&home(), "id,metadata\n1,\"{\"\"first_name\"\": \"\"Zoe\"\", \"\"plan\"\": \"\"pro\"\"}\"\n");
+    assert_hidden(&out, &["Zoe"]);
+    assert!(out.contains("\"\"plan\"\": \"\"pro\"\""), "{out}");
+}
+
+#[test]
+fn escaped_quotes_do_not_cut_a_value_short() {
+    let out = mask(&home(), "#<User first_name: \"Zoe \\\"Zozo\\\" Xyz\", state: \"active\">\n");
+    assert_hidden(&out, &["Zoe", "Zozo", "Xyz"]);
+    assert!(out.contains("state: \"active\""), "{out}");
+}
+
+#[test]
+fn yaml_like_lines_are_masked_by_key() {
+    let out = mask(&home(), "id: 12\nfirst_name: Zoe\n- last_name: Xyz\nstatus: active\nbirth_date: nil\n");
+    assert_hidden(&out, &["Zoe", "Xyz"]);
+    assert!(out.contains("id: 12\n") && out.contains("status: active\n") && out.contains("birth_date: nil\n"), "{out}");
+}
+
+#[test]
+fn identifiers_and_references_are_not_taken_for_contact_data() {
+    let text = "uuid 3f2a-0123-4567-89ab, order AB12CDEF3456, sku XY99 ABCD EFGH IJKL\n";
+    assert_eq!(mask(&home(), text), text);
+    let table =
+        " id | address_id | phone_verified_at\n----+------------+-------------------\n  1 |         42 | 2026-01-01\n";
+    assert_eq!(mask(&home(), table), table);
+}
+
+#[test]
+fn spellings_of_one_email_share_a_token() {
+    let out = mask(&home(), "from Zoe@Example.com to zoe@example.com\n");
+    let tokens: Vec<&str> = out.split_whitespace().filter(|word| word.starts_with("EMAIL_")).collect();
+    assert_eq!(tokens.len(), 2, "{out}");
+    assert_eq!(tokens[0], tokens[1]);
+}
+
+#[test]
+fn csv_record_with_line_breaks_stays_one_record() {
+    let csv = "MsgID,RealName,Text,Email\n1,Zoe Xyz,\"first line\n\nthird, \"\"quoted\"\" line\",zoe@x.fr\n2,Ana Abc,short,ana@x.fr\n";
+    let out = mask(&home(), csv);
+    assert_hidden(&out, &["Zoe Xyz", "Ana Abc", "zoe@x.fr", "ana@x.fr", "row hidden"]);
+    assert!(out.contains("\"first line\n\nthird, \"\"quoted\"\" line\",EMAIL_"), "{out}");
+    assert!(out.contains("\n2,PERSON_"), "{out}");
+}
+
+#[test]
+fn chained_rtk_results_are_each_masked() {
+    let out = mask(&home(), "id\tfirst_name\n1\tZoe\n[1] id=1 first_name=Zoe status=ok\n");
+    assert_hidden(&out, &["Zoe", "row hidden"]);
+    assert!(out.ends_with("status=ok\n"), "{out}");
+}
+
+#[test]
+fn name_beside_an_iban_is_the_account_holder() {
+    let home = home();
+    let json = mask(&home, r#"{"id":5,"bic":"BNPAFRPPXXX","iban":"FR7630006000011234567890189","name":"JEAN DUPONT"}"#);
+    assert_hidden(&json, &["JEAN DUPONT", "FR7630006000011234567890189"]);
+    assert!(json.contains("BNPAFRPPXXX"), "{json}");
+    let table = mask(&home, "id | name | iban\n----+------+------\n 5 | Dupont SARL | FR7630006000011234567890189\n");
+    assert_hidden(&table, &["Dupont SARL"]);
+}
+
+#[test]
+fn name_without_an_iban_stays_visible() {
+    let out = mask(&home(), "id | name | state\n----+------+------\n 5 | Ticket cinema | active\n");
+    assert!(out.contains("Ticket cinema"), "{out}");
+    let json = mask(&home(), r#"{"id":5,"name":"Ticket cinema","state":"active"}"#);
+    assert!(json.contains("Ticket cinema"), "{json}");
+}
+
+#[test]
+fn json_opened_at_the_end_of_a_line_is_masked_by_key() {
+    let inspect = "#<Treezor::Beneficiary:0x16d78 id=5> JSON: {\n  \"id\": 5,\n  \"iban\": \"FR7630006000011234567890189\",\n  \"name\": \"JEAN DUPONT\"\n}\n=> nil\n";
+    let out = mask(&home(), inspect);
+    assert_hidden(&out, &["JEAN DUPONT", "FR7630006000011234567890189"]);
+    assert!(out.starts_with("#<Treezor::Beneficiary:0x16d78 id=5> JSON: {"), "{out}");
+    assert!(out.ends_with("}\n=> nil\n"), "{out}");
+    let code = "fn main() {\n    let name = 1;\n}\n";
+    assert_eq!(mask(&home(), code), code);
+}
+
+// --- fail closed, doctor, forget ----------------------------------------------------------------
+
+#[test]
+fn hook_hides_output_when_the_payload_is_unreadable() {
+    let out = ranon(&home(), &["hook", "claude"], r#"{"tool_name":"Bash", truncated"#);
+    let updated =
+        serde_json::from_str::<serde_json::Value>(&out).unwrap()["hookSpecificOutput"]["updatedToolOutput"].clone();
+    assert!(updated["stdout"].as_str().unwrap().contains("output hidden"), "{out}");
+
+    let out = ranon(&home(), &["hook", "claude"], "not json");
+    assert!(out.contains("output hidden") && out.contains(r#""type":"text""#), "{out}");
+}
+
+#[test]
+fn hook_fails_closed_on_an_empty_salt() {
+    let home = home();
+    std::fs::write(home.join("salt"), "").unwrap();
+    let updated = hook(&home, bash("psql -c q", "first_name\tid\nJean\t1")).unwrap();
+    let stdout = updated["stdout"].as_str().unwrap();
+    assert!(stdout.contains("output hidden"), "{stdout}");
+    assert_hidden(stdout, &["Jean"]);
+}
+
+#[test]
+fn hook_logs_what_it_did_without_content() {
+    let home = home();
+    hook(&home, bash("psql -c q", "first_name\temail\nJean\tjean@example.com")).unwrap();
+    hook(&home, bash("psql -At -c q", "Jean")).unwrap();
+    assert!(hook(&home, bash("git status", "clean")).is_none());
+    let log = std::fs::read_to_string(home.join("hook.log")).unwrap();
+    let entries: Vec<Vec<&str>> = log.lines().map(|line| line.split('\t').skip(1).collect()).collect();
+    assert_eq!(entries, [["Bash", "masked", "2"], ["Bash", "hidden", "0"]]);
+    assert_hidden(&log, &["Jean", "psql"]);
+}
+
+/// A state directory created the way ranon creates it, unlike the world-readable `home()`.
+fn private_home() -> PathBuf {
+    let home = home();
+    std::fs::set_permissions(&home, std::fs::Permissions::from_mode(0o700)).unwrap();
+    home
+}
+
+#[test]
+fn doctor_reports_the_setup() {
+    let home = private_home();
+    ranon(&home, &["dict", "build", "--stdin"], "Jean Dupont\n");
+    let (out, _, _) = run_with(Path::new(BIN), &home, &["doctor"], "");
+    for line in ["ok    rules: loaded", "is private", "ok    name dictionary: 2 hashed words", "ok    self-test"] {
+        assert!(out.contains(line), "{line} missing in:\n{out}");
+    }
+
+    std::fs::write(home.join("rules.toml"), "colum = []").unwrap();
+    let (out, _, code) = run_with(Path::new(BIN), &home, &["doctor"], "");
+    assert_eq!(code, 1);
+    assert!(out.contains("FAIL  rules:"), "{out}");
+}
+
+#[test]
+fn doctor_flags_state_readable_by_others() {
+    let home = private_home();
+    mask(&home, "email\njean@x.fr\n");
+    std::fs::set_permissions(home.join("map.tsv"), std::fs::Permissions::from_mode(0o644)).unwrap();
+    let (out, _, code) = run_with(Path::new(BIN), &home, &["doctor"], "");
+    assert_eq!(code, 1);
+    let exposed = format!("chmod go-rwx on {}\n", home.join("map.tsv").display());
+    assert!(out.contains("FAIL  state: readable by other users") && out.contains(&exposed), "{out}");
+}
+
+#[test]
+fn forget_drops_real_values_but_tokens_stay_stable() {
+    let home = home();
+    let masked = mask(&home, "email\njean@example.com\n");
+    assert_eq!(ranon(&home, &["forget", "--older-than", "1"], "").trim(), "0 value(s) forgotten, 1 kept");
+    assert_eq!(ranon(&home, &["unmask"], &masked), "email\njean@example.com\n");
+
+    assert_eq!(ranon(&home, &["forget"], "").trim(), "1 value(s) forgotten, 0 kept");
+    assert_eq!(ranon(&home, &["unmask"], &masked), masked, "a forgotten token cannot be unmasked");
+    assert_eq!(mask(&home, "email\njean@example.com\n"), masked, "same value, same token");
+    assert_eq!(std::fs::metadata(home.join("map.tsv")).unwrap().permissions().mode() & 0o777, 0o600);
+}
+
+#[test]
+fn token_maps_written_before_timestamps_still_unmask() {
+    let home = home();
+    mask(&home, "email\nx@example.com\n");
+    std::fs::write(home.join("map.tsv"), "PERSON_abc123\tJean\n").unwrap();
+    assert_eq!(ranon(&home, &["unmask"], "PERSON_abc123"), "Jean");
+    assert_eq!(ranon(&home, &["forget", "--older-than", "1"], "").trim(), "1 value(s) forgotten, 0 kept");
+}

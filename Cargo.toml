@@ -24,3 +24,9 @@ unicode-normalization = "0.1.26"
 
 [dev-dependencies]
 serde_json = "1.0.154"
+
+# no `panic = "abort"`: the hook catches panics to hide the output instead of leaking it
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true

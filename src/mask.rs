@@ -26,29 +26,47 @@ impl Masker {
         Ok(Self { store, names })
     }
 
-    pub fn persist(&self) -> io::Result<()> {
+    pub fn persist(&mut self) -> io::Result<()> {
         self.store.persist()
     }
 
     pub fn mask_text(&mut self, text: &str) -> String {
-        let text = self.mask_json_text(text);
+        let text = self.mask_json_documents(text);
         let text = self.mask_tables(&text);
         let text = self.mask_key_values(&text);
         let text = self.mask_patterns(&text);
         self.mask_names(&text)
     }
 
-    /// A whole JSON document (Stripe CLI, API responses, MCP tools): masked by key with its parent as context.
-    fn mask_json_text(&mut self, text: &str) -> String {
-        let trimmed = text.trim();
-        if !(trimmed.starts_with('{') || trimmed.starts_with('[')) {
-            return text.to_string();
+    /// JSON documents (Stripe CLI, API responses, MCP tools), masked by key with the parent as context.
+    /// One is looked for at the start of every line (the whole output, JSON lines, JSON after a banner)
+    /// and where a line ends by opening one (the `inspect` of an API object).
+    fn mask_json_documents(&mut self, text: &str) -> String {
+        let mut out = String::with_capacity(text.len());
+        let mut rest = text;
+        while !rest.is_empty() {
+            let line_end = rest.find('\n').map_or(rest.len(), |newline| newline + 1);
+            let indent = rest.len() - rest.trim_start_matches([' ', '\t']).len();
+            // also a document opened at the end of a line: `#<Treezor::User id=1> JSON: {`
+            let opened = rest[..line_end].trim_end().len().saturating_sub(1);
+            let found = [indent, opened].into_iter().find_map(|at| Some((at, leading_json(&rest[at..])?)));
+            let Some((indent, (mut value, len))) = found else {
+                out.push_str(&rest[..line_end]);
+                rest = &rest[line_end..];
+                continue;
+            };
+            let source = &rest[indent..indent + len];
+            self.mask_json(&mut value);
+            let masked = if source.contains('\n') {
+                serde_json::to_string_pretty(&value)
+            } else {
+                serde_json::to_string(&value)
+            };
+            out.push_str(&rest[..indent]);
+            out.push_str(&masked.unwrap_or_else(|_| "[ranon: JSON hidden]".to_string()));
+            rest = &rest[indent + len..];
         }
-        let Ok(mut value) = serde_json::from_str::<Value>(trimmed) else { return text.to_string() };
-        self.mask_json(&mut value);
-        let masked =
-            if trimmed.contains('\n') { serde_json::to_string_pretty(&value) } else { serde_json::to_string(&value) };
-        masked.unwrap_or_else(|_| text.to_string())
+        out
     }
 
     pub fn mask_json(&mut self, value: &mut Value) {
@@ -61,8 +79,12 @@ impl Masker {
         match value {
             Value::Object(map) => {
                 let context = map.get("object").and_then(Value::as_str).unwrap_or(parent).to_string();
+                let holder = holder_kind(map.keys());
                 for (key, child) in map.iter_mut() {
-                    let kind = column_kind(&format!("{context}.{key}")).or_else(|| column_kind(key)).or(inherited);
+                    let kind = column_kind(&format!("{context}.{key}"))
+                        .or_else(|| column_kind(key))
+                        .or_else(|| holder.filter(|_| is_plain_name(key)))
+                        .or(inherited);
                     self.mask_json_at(child, key, kind);
                 }
             }
@@ -127,9 +149,8 @@ impl Masker {
 
     /// rtk -x: "[1] col=val col=val".
     fn mask_rtk_record_line(&mut self, line: &str) -> Option<String> {
-        static LINE: OnceLock<Regex> = OnceLock::new();
         static FIELD: OnceLock<Regex> = OnceLock::new();
-        if !re(&LINE, r"^\[\d+\] \w+=").is_match(line) {
+        if !is_rtk_record(line) {
             return None;
         }
         let (prefix, rest) = line.split_at(line.find("] ")? + 2);
@@ -151,7 +172,7 @@ impl Masker {
     }
 
     /// Table header at `i`: tab (rtk), pipe (psql aligned / -A) or comma (--csv). Returns the next line to read.
-    fn mask_table_at(&mut self, lines: &mut [String], i: usize) -> usize {
+    fn mask_table_at(&mut self, lines: &mut Vec<String>, i: usize) -> usize {
         static SEPARATOR: OnceLock<Regex> = OnceLock::new();
         static HEADER_CELL: OnceLock<Regex> = OnceLock::new();
         let single_column = lines.get(i + 1).is_some_and(|next| re(&SEPARATOR, r"^-+$").is_match(next));
@@ -172,10 +193,12 @@ impl Masker {
     }
 
     /// Masks the rows under a header line. Returns the index after the table.
-    fn mask_delimited(&mut self, lines: &mut [String], i: usize, sep: char, header: &[String]) -> usize {
+    fn mask_delimited(&mut self, lines: &mut Vec<String>, i: usize, sep: char, header: &[String]) -> usize {
         static SEPARATOR: OnceLock<Regex> = OnceLock::new();
         static FOOTER: OnceLock<Regex> = OnceLock::new();
-        let kinds: Vec<Option<&str>> = header.iter().map(|h| column_kind(h)).collect();
+        let holder = holder_kind(header.iter());
+        let kinds: Vec<Option<&str>> =
+            header.iter().map(|h| column_kind(h).or_else(|| holder.filter(|_| is_plain_name(h)))).collect();
         if kinds.iter().all(Option::is_none) {
             return i + 1;
         }
@@ -184,8 +207,12 @@ impl Masker {
             j += 1;
         }
         while j < lines.len() {
+            if sep == ',' {
+                join_quoted_record(lines, j);
+            }
             let line = lines[j].trim();
-            if line.is_empty() || re(&FOOTER, r"^\(\d+ rows?\)$").is_match(line) {
+            // an rtk record starts the next result when queries are chained without a blank line
+            if line.is_empty() || re(&FOOTER, r"^\(\d+ rows?\)$").is_match(line) || is_rtk_record(line) {
                 break;
             }
             let cells = split_cells(&lines[j], sep);
@@ -205,23 +232,48 @@ impl Masker {
         j
     }
 
-    /// `first_name: "Jean"`, `"email": "a@b.fr"`, `"last_name"=>"Dupont"`, `iban="FR76…"`.
+    /// `first_name: "Jean"`, `"email": "a@b.fr"`, `"last_name"=>"Dupont"`, `iban="FR76…"`,
+    /// JSON inside a CSV cell (`""email"": ""a@b.fr""`) and YAML-like lines (`last_name: Dupont`).
     fn mask_key_values(&mut self, text: &str) -> String {
-        static KEY_VALUE: OnceLock<Regex> = OnceLock::new();
-        let pattern =
-            re(&KEY_VALUE, r#"(?P<key>[A-Za-z_][A-Za-z0-9_]*)(?P<sep>"?\s*(?::|=>|=)\s*")(?P<value>[^"\n]*)""#);
-        pattern
-            .replace_all(text, |c: &Captures| match column_kind(&c["key"]) {
-                Some(kind) => format!("{}{}{}\"", &c["key"], &c["sep"], self.mask_cell(kind, &c["value"])),
-                None => c[0].to_string(),
-            })
-            .into_owned()
+        static QUOTED: OnceLock<Regex> = OnceLock::new();
+        static CSV_QUOTED: OnceLock<Regex> = OnceLock::new();
+        static UNQUOTED_LINE: OnceLock<Regex> = OnceLock::new();
+        const KEY: &str = "(?P<key>[A-Za-z_][A-Za-z0-9_]*)";
+        let patterns = [
+            re(&QUOTED, &format!(r#"{KEY}(?P<sep>"?\s*(?::|=>|=)\s*")(?P<value>(?:[^"\\\n]|\\.)*)(?P<end>")"#)),
+            re(&CSV_QUOTED, &format!(r#"{KEY}(?P<sep>""\s*:\s*"")(?P<value>[^"\n]*)(?P<end>"")"#)),
+            re(
+                &UNQUOTED_LINE,
+                &format!(
+                    r#"(?m)^(?P<lead>[ \t]*(?:- )?){KEY}(?P<sep>:[ \t]+)(?P<value>[^\s"'\[{{|>&*!#].*)(?P<end>)$"#
+                ),
+            ),
+        ];
+        let mut text = text.to_string();
+        for pattern in patterns {
+            text = pattern
+                .replace_all(&text, |c: &Captures| match column_kind(&c["key"]) {
+                    Some(kind) => {
+                        let lead = c.name("lead").map_or("", |lead| lead.as_str());
+                        format!("{lead}{}{}{}{}", &c["key"], &c["sep"], self.mask_cell(kind, &c["value"]), &c["end"])
+                    }
+                    None => c[0].to_string(),
+                })
+                .into_owned();
+        }
+        text
     }
 
     fn mask_patterns(&mut self, text: &str) -> String {
         let mut text = text.to_string();
-        for (pattern, kind) in value_patterns() {
-            text = pattern.replace_all(&text, |c: &Captures| self.store.token(kind, &c[0])).into_owned();
+        for pattern in value_patterns() {
+            text = pattern
+                .re
+                .replace_all(&text, |c: &Captures| match pattern.accepts(&c[0]) {
+                    true => self.store.token(pattern.kind, &c[0]),
+                    false => c[0].to_string(),
+                })
+                .into_owned();
         }
         text
     }
@@ -269,6 +321,41 @@ impl Masker {
         out.push_str(&text[last..]);
         out
     }
+}
+
+fn is_plain_name(key: &str) -> bool {
+    key.trim().eq_ignore_ascii_case("name")
+}
+
+/// A bare `name` beside an IBAN is the account holder (a Treezor beneficiary, a row of a bank accounts table):
+/// the kind it gets when the object or the table has an IBAN, `None` otherwise.
+fn holder_kind<Key: AsRef<str>>(mut keys: impl Iterator<Item = Key>) -> Option<&'static str> {
+    keys.any(|key| column_kind(key.as_ref().trim()) == Some("IBAN")).then_some("PERSON")
+}
+
+/// rtk -x: "[1] col=val col=val".
+fn is_rtk_record(line: &str) -> bool {
+    static LINE: OnceLock<Regex> = OnceLock::new();
+    re(&LINE, r"^\[\d+\] \w+=").is_match(line)
+}
+
+/// A CSV record whose quoted value holds line breaks (a Slack message) spans several lines: makes it one.
+fn join_quoted_record(lines: &mut Vec<String>, at: usize) {
+    while lines[at].matches('"').count() % 2 == 1 && at + 1 < lines.len() {
+        let next = lines.remove(at + 1);
+        lines[at].push('\n');
+        lines[at].push_str(&next);
+    }
+}
+
+/// The JSON object or array `text` starts with, and its length in bytes.
+fn leading_json(text: &str) -> Option<(Value, usize)> {
+    if !text.starts_with(['{', '[']) {
+        return None;
+    }
+    let mut documents = serde_json::Deserializer::from_str(text).into_iter::<Value>();
+    let value = documents.next()?.ok()?;
+    Some((value, documents.byte_offset()))
 }
 
 fn split_cells(line: &str, sep: char) -> Vec<String> {

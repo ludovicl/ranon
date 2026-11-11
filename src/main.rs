@@ -5,11 +5,13 @@
 //!   command and masks its output, whatever the agent harness;
 //! - `ranon hook claude` is a Claude Code PostToolUse hook;
 //! - `ranon mask` / `ranon unmask` filter stdin;
-//! - `ranon dict build` hashes the person names of your own database to catch them in free text.
+//! - `ranon dict build` hashes the person names of your own database to catch them in free text;
+//! - `ranon doctor` checks the setup, `ranon forget` drops the real values kept for unmasking.
 
 #[cfg(not(unix))]
 compile_error!("ranon supports Unix-like systems only (Linux, macOS)");
 
+mod doctor;
 mod hook;
 mod mask;
 mod names;
@@ -47,6 +49,14 @@ enum Cmd {
     Rules {
         /// e.g. `first_name billing_details.name status`
         names: Vec<String>,
+    },
+    /// Check that masking is in place: binary, rules, state, dictionary, Claude Code hooks
+    Doctor,
+    /// Drop real values from the local token map; their tokens can no longer be unmasked
+    Forget {
+        /// Only drop values first masked more than this many days ago
+        #[arg(long, value_name = "DAYS")]
+        older_than: Option<u64>,
     },
     /// Create shims (symlinks to ranon) for the given commands, to put first in the agent's PATH
     Init {
@@ -99,6 +109,8 @@ fn main() {
             dict_build(stdin, &db_url_env, sql.as_deref().unwrap_or_default(), replace)
         }
         Cmd::Rules { names } => rules(&names),
+        Cmd::Doctor => doctor::run(),
+        Cmd::Forget { older_than } => forget(older_than),
         Cmd::Init { shim_dir, commands } => init(&shim_dir, &commands),
         Cmd::Run(argv) => match argv.split_first() {
             Some((name, rest)) => proxy::run(&name.to_string_lossy(), rest),
@@ -123,8 +135,7 @@ fn filter(unmask: bool) -> i32 {
         Err(error) => return fail(&error.to_string()),
     };
     let output = if unmask {
-        let mapping = masker.store.mapping().unwrap_or_default();
-        masker.store.unmask(&input, &mapping)
+        masker.store.unmask(&input)
     } else {
         let masked = masker.mask_text(&input);
         if let Err(error) = masker.persist() {
@@ -145,6 +156,17 @@ fn rules(names: &[String]) -> i32 {
         println!("{name}: {}", rules::explain(name));
     }
     0
+}
+
+fn forget(older_than_days: Option<u64>) -> i32 {
+    let age = older_than_days.map(|days| std::time::Duration::from_secs(days * 24 * 3600));
+    match store::Store::open().and_then(|mut store| Ok((store.forget(age)?, store.len()))) {
+        Ok((forgotten, kept)) => {
+            println!("{forgotten} value(s) forgotten, {kept} kept");
+            0
+        }
+        Err(error) => fail(&error.to_string()),
+    }
 }
 
 fn dict_stats() -> i32 {

@@ -31,17 +31,30 @@ struct RuleConfig {
     kind: String,
 }
 
+/// A column or key name rule. `kind` is `None` for a keep rule: the name stays visible.
 #[derive(Debug)]
 struct Rule {
     re: Regex,
-    kind: &'static str,
+    kind: Option<&'static str>,
     source: &'static str,
 }
 
+pub struct ValuePattern {
+    pub re: Regex,
+    pub kind: &'static str,
+    accepts: Option<fn(&str) -> bool>,
+}
+
+impl ValuePattern {
+    pub fn accepts(&self, text: &str) -> bool {
+        self.accepts.is_none_or(|check| check(text))
+    }
+}
+
 pub struct Rules {
-    keep: Vec<Rule>,
-    columns: Vec<Rule>,
-    values: Vec<(Regex, &'static str)>,
+    /// In priority order, first match wins: user keeps, user columns, built-in keeps, built-in columns.
+    names: Vec<Rule>,
+    values: Vec<ValuePattern>,
     commands: Regex,
     command_list: Vec<(String, &'static str)>,
     files: Vec<PathBuf>,
@@ -111,50 +124,64 @@ fn leak(text: String) -> &'static str {
     Box::leak(text.into_boxed_str())
 }
 
-fn user_rules(list: Vec<RuleConfig>, source: &'static str) -> Result<Vec<Rule>, String> {
+/// Compiled pattern and kind of the `[[column]]` or `[[value]]` entries of a user file.
+fn user_rules(list: Vec<RuleConfig>, source: &'static str) -> Result<Vec<(Regex, &'static str)>, String> {
     list.into_iter()
         .map(|rule| {
             if rule.kind.is_empty() || !rule.kind.chars().all(|c| c.is_ascii_uppercase()) {
                 return Err(format!("{source}: invalid kind `{}`, use uppercase letters only (PERSON)", rule.kind));
             }
             let re = compile(&rule.pattern).map_err(|e| format!("{source}: {e}"))?;
-            Ok(Rule { re, kind: leak(rule.kind), source })
+            Ok((re, leak(rule.kind)))
         })
         .collect()
 }
 
 fn build(configs: Vec<(PathBuf, Config)>) -> Result<Rules, String> {
     let mut rules = Rules {
-        keep: Vec::new(),
-        columns: Vec::new(),
+        names: Vec::new(),
         values: Vec::new(),
         commands: Regex::new("$^").unwrap(),
         command_list: Vec::new(),
         files: Vec::new(),
         sources: Vec::new(),
     };
-    // user rules come first so they can override a built-in kind
+    // user rules come first so they can override a built-in kind or keep
+    let mut user_columns = Vec::new();
     for (path, config) in configs {
         let source = leak(path.file_name().map_or_else(String::new, |n| n.to_string_lossy().into_owned()));
         for pattern in &config.keep {
             let re = compile(pattern).map_err(|e| format!("{source}: {e}"))?;
-            rules.keep.push(Rule { re, kind: "", source });
+            rules.names.push(Rule { re, kind: None, source });
         }
-        rules.columns.extend(user_rules(config.column, source)?);
-        rules.values.extend(user_rules(config.value, source)?.into_iter().map(|rule| (rule.re, rule.kind)));
+        for (re, kind) in user_rules(config.column, source)? {
+            user_columns.push(Rule { re, kind: Some(kind), source });
+        }
+        for (re, kind) in user_rules(config.value, source)? {
+            rules.values.push(ValuePattern { re, kind, accepts: None });
+        }
         rules.command_list.extend(config.commands.into_iter().map(|command| (command, source)));
         rules.files.push(path);
         rules.sources.push(source);
     }
+    rules.names.extend(user_columns);
+    let mut builtin_columns = Vec::new();
     for set in builtin::SETS {
         let source = leak(format!("built-in {}", set.name));
         rules.sources.push(source);
-        for (pattern, kind) in set.columns {
-            rules.columns.push(Rule { re: Regex::new(pattern).unwrap(), kind, source });
+        for pattern in set.keep {
+            rules.names.push(Rule { re: Regex::new(pattern).unwrap(), kind: None, source });
         }
-        rules.values.extend(set.values.iter().map(|(pattern, kind)| (Regex::new(pattern).unwrap(), *kind)));
+        for (pattern, kind) in set.columns {
+            builtin_columns.push(Rule { re: Regex::new(pattern).unwrap(), kind: Some(kind), source });
+        }
+        for value in set.values {
+            let re = Regex::new(value.pattern).unwrap();
+            rules.values.push(ValuePattern { re, kind: value.kind, accepts: value.accepts });
+        }
         rules.command_list.extend(set.commands.iter().map(|command| (command.to_string(), source)));
     }
+    rules.names.extend(builtin_columns);
     let alternatives: Vec<String> = rules
         .command_list
         .iter()
@@ -164,18 +191,36 @@ fn build(configs: Vec<(PathBuf, Config)>) -> Result<Rules, String> {
     Ok(rules)
 }
 
-/// What applies to a name: `Ok(rule)` when masked, `Err(Some(keep rule))` when explicitly kept visible.
-fn lookup<'a>(rules: &'a Rules, name: &str) -> Result<&'a Rule, Option<&'a Rule>> {
-    let name = name.trim().trim_matches(['"', ':']).to_lowercase();
-    if let Some(keep) = rules.keep.iter().find(|rule| rule.re.is_match(&name)) {
-        return Err(Some(keep));
+/// `dateOfBirth`, `IPAddress` and `Last Name` as `date_of_birth`, `ip_address` and `last_name`.
+fn snake_case(name: &str) -> String {
+    let chars: Vec<char> = name.chars().collect();
+    let mut snake = String::with_capacity(name.len() + 4);
+    for (i, &c) in chars.iter().enumerate() {
+        if matches!(c, ' ' | '-') {
+            snake.push('_');
+            continue;
+        }
+        let after_lower = i > 0 && (chars[i - 1].is_lowercase() || chars[i - 1].is_ascii_digit());
+        let acronym_end =
+            i > 0 && chars[i - 1].is_uppercase() && chars.get(i + 1).is_some_and(|next| next.is_lowercase());
+        if c.is_uppercase() && (after_lower || acronym_end) {
+            snake.push('_');
+        }
+        snake.extend(c.to_lowercase());
     }
-    rules.columns.iter().find(|rule| rule.re.is_match(&name)).ok_or(None)
+    snake
+}
+
+/// The first rule matching a name, as written in lowercase or in snake_case.
+fn lookup<'a>(rules: &'a Rules, name: &str) -> Option<&'a Rule> {
+    let name = name.trim().trim_matches(['"', ':']);
+    let forms = [name.to_lowercase(), snake_case(name)];
+    rules.names.iter().find(|rule| forms.iter().any(|form| rule.re.is_match(form)))
 }
 
 impl Rules {
     fn kind(&self, name: &str) -> Option<&'static str> {
-        lookup(self, name).ok().map(|rule| rule.kind)
+        lookup(self, name).and_then(|rule| rule.kind)
     }
 }
 
@@ -187,13 +232,13 @@ pub fn column_kind(name: &str) -> Option<&'static str> {
 /// Which rule applies to a name, and where it comes from.
 pub fn explain(name: &str) -> String {
     match lookup(rules(), name) {
-        Ok(rule) => format!("{} ({})", rule.kind, rule.source),
-        Err(Some(keep)) => format!("kept visible (keep in {})", keep.source),
-        Err(None) => "kept visible".to_string(),
+        Some(Rule { kind: Some(kind), source, .. }) => format!("{kind} ({source})"),
+        Some(keep) => format!("kept visible (keep in {})", keep.source),
+        None => "kept visible".to_string(),
     }
 }
 
-pub fn value_patterns() -> &'static [(Regex, &'static str)] {
+pub fn value_patterns() -> &'static [ValuePattern] {
     &rules().values
 }
 
@@ -210,8 +255,9 @@ pub fn summary() -> String {
     }
     lines.extend(rules.files.iter().map(|path| format!("user file: {}", path.display())));
     for source in &rules.sources {
-        let columns = rules.columns.iter().filter(|rule| rule.source == *source).count();
-        let keep = rules.keep.iter().filter(|rule| rule.source == *source).count();
+        let from_source = || rules.names.iter().filter(|rule| rule.source == *source);
+        let columns = from_source().filter(|rule| rule.kind.is_some()).count();
+        let keep = from_source().filter(|rule| rule.kind.is_none()).count();
         let commands: Vec<&str> =
             rules.command_list.iter().filter(|(_, s)| s == source).map(|(c, _)| c.as_str()).collect();
         let mut parts = vec![format!("{columns} column rules")];
@@ -284,6 +330,23 @@ mod tests {
             ("encrypted_password", "SECRET"),
             ("reset_password_token", "SECRET"),
             ("client_secret_ciphertext", "SECRET"),
+            ("dateOfBirth", "BIRTHDATE"),
+            ("billingAddress", "ADDRESS"),
+            ("clientIP", "IP"),
+            ("userEmail", "EMAIL"),
+            ("socialSecurityNumber", "SSN"),
+            ("Last Name", "PERSON"),
+            ("real_name", "PERSON"),
+            ("realName", "PERSON"),
+            ("display_name_normalized", "PERSON"),
+            ("userName", "PERSON"),
+            ("author_first_name", "PERSON"),
+            ("contact_name", "PERSON"),
+            ("phone_number_contact", "PHONE"),
+            ("mobile_phone", "PHONE"),
+            ("issuer_iban", "IBAN"),
+            ("iban_ciphertext", "IBAN"),
+            ("recipient_address", "ADDRESS"),
         ];
         for (column, kind) in cases {
             assert_eq!(column_kind(column), Some(kind), "{column}");
@@ -311,6 +374,13 @@ mod tests {
             "zip",
             "reset_password_sent_at",
             "unicity_token",
+            "mobile_app_version",
+            "phone_code",
+            "phone_verified_at",
+            "iban_verified_at",
+            "address_id",
+            "emailStatus",
+            "access_token_expires_at",
         ] {
             assert_eq!(column_kind(column), None, "{column}");
         }
@@ -319,13 +389,20 @@ mod tests {
     #[test]
     fn value_patterns_catch_contact_data() {
         let kinds = |text: &str| {
-            value_patterns().iter().filter(|(re, _)| re.is_match(text)).map(|(_, k)| *k).collect::<Vec<_>>()
+            value_patterns()
+                .iter()
+                .filter(|pattern| pattern.re.find_iter(text).any(|found| pattern.accepts(found.as_str())))
+                .map(|pattern| pattern.kind)
+                .collect::<Vec<_>>()
         };
         assert_eq!(kinds("jean.dupont@example.com"), ["EMAIL"]);
         assert_eq!(kinds("FR76 3000 6000 0112 3456 7890 189"), ["IBAN"]);
         assert_eq!(kinds("FR7630006000011234567890189"), ["IBAN"]);
         assert_eq!(kinds("06 12 34 56 78"), ["PHONE"]);
         assert_eq!(kinds("+33612345678"), ["PHONE"]);
+        assert_eq!(kinds("+33 6 12 34 56 78"), ["PHONE"]);
+        assert!(kinds("uuid 3f2a-0123-4567-89ab").is_empty());
+        assert!(kinds("order AB12CDEF3456, code FR76ABCD1234, sku XY99 ABCD EFGH IJKL").is_empty());
         assert_eq!(kinds("from 192.168.1.20"), ["IP"]);
         assert!(kinds("amount 1234.56, id 42, version 1.2.3, at 12:34:56").is_empty());
     }
@@ -362,11 +439,35 @@ mod tests {
         assert_eq!(rules.kind("Prénom"), Some("PERSON"));
         assert_eq!(rules.kind("city"), None);
         assert_eq!(rules.kind("first_name"), Some("PERSON"));
-        assert_eq!(rules.values[0].1, "SIRET");
+        assert_eq!(rules.values[0].kind, "SIRET");
         assert_eq!(lookup(&rules, "prénom").unwrap().source, "notion.toml");
         assert_eq!(lookup(&rules, "iban").unwrap().source, "built-in payments");
-        assert_eq!(lookup(&rules, "city").unwrap_err().unwrap().source, "notion.toml");
+        assert_eq!(lookup(&rules, "city").unwrap().source, "notion.toml");
         assert!(rules.commands.is_match("curl https://api.stripe.com/v1/customers"));
+    }
+
+    #[test]
+    fn user_column_overrides_a_builtin_keep() {
+        let config: Config = toml::from_str("[[column]]\npattern = '^national_id$'\nkind = \"SSN\"").unwrap();
+        let rules = build(vec![(PathBuf::from("x.toml"), config)]).unwrap();
+        assert_eq!(rules.kind("national_id"), Some("SSN"));
+        assert_eq!(rules.kind("nationalId"), Some("SSN"));
+        assert_eq!(rules.kind("address_id"), None);
+    }
+
+    #[test]
+    fn snake_case_splits_words_and_acronyms() {
+        for (name, snake) in [
+            ("dateOfBirth", "date_of_birth"),
+            ("IPAddress", "ip_address"),
+            ("userID", "user_id"),
+            ("Last Name", "last_name"),
+            ("address1", "address1"),
+            ("IBAN", "iban"),
+            ("billing_details.name", "billing_details.name"),
+        ] {
+            assert_eq!(snake_case(name), snake);
+        }
     }
 
     #[test]
