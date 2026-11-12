@@ -279,6 +279,8 @@ does not see it.
 
 Step 7 is where a setup gets safe: field names differ in every company, and only real output shows the ones the built-in rules miss. The agent will see the values of the fields that are not covered yet, so start with a single row.
 
+On another harness, step 3 changes: a PATH shim replaces the hook, and no `PreToolUse` pass puts real values back before a write. The rest of the prompt holds as it is.
+
 ### PATH shim (any agent)
 
 ```sh
@@ -287,6 +289,34 @@ ranon init heroku psql     # several commands
 ```
 
 Put `~/.local/share/ranon/shims` first in the **agent's** PATH only, not your own shell. The agent keeps typing `psql`; ranon finds the real binary further down the PATH, runs it and masks stdout and stderr, keeping the exit code.
+
+Where that PATH is set depends on the harness. OpenCode hands the environment of every shell command to a plugin, so one file is enough:
+
+```ts
+// .opencode/plugins/ranon.ts, or ~/.config/opencode/plugins/ranon.ts for every project
+import { existsSync } from "node:fs"
+import { homedir } from "node:os"
+import { join } from "node:path"
+
+const shims = join(homedir(), ".local", "share", "ranon", "shims")
+
+export default {
+  id: "ranon",
+  async setup(ctx: any) {
+    if (!existsSync(shims)) return
+    await ctx.shell.hook("create.before", (event: { env?: Record<string, string | undefined> }) => {
+      if (!event.env) return
+      const path = event.env.PATH ?? process.env.PATH ?? ""
+      if (path.split(":").includes(shims)) return
+      event.env.PATH = `${shims}:${path}`
+    })
+  },
+}
+```
+
+Check it from the agent rather than from your shell: `command -v psql` must print the shim, and a query returning a name must show a token. `ranon doctor` only covers the binary and the Claude Code hooks, so with a shim it says nothing about the wiring.
+
+The shim covers commands, so it also masks a command whose output is redirected to a file. It does not cover an MCP server, whose output never goes through a shell: for those, use the Claude Code hook, or a wrapper that pipes the output through `ranon mask`.
 
 ### Manual
 
