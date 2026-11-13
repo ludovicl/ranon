@@ -168,6 +168,15 @@ fn full_names_are_masked_lone_words_are_not() {
 }
 
 #[test]
+fn names_split_across_record_cells_are_masked() {
+    let home = with_names("Jean\nDupont\nMarie\nMartin\nPaul\nDurand\nLucie\nPetit\n");
+    let out =
+        mask(&home, "EMAIL | Jean | Dupont | Acme\n[[\"Marie\", \"Martin\"], ['Paul', 'Durand']]\n42\tLucie\tPetit\n");
+    assert_hidden(&out, &["Jean", "Dupont", "Marie", "Martin", "Paul", "Durand", "Lucie", "Petit"]);
+    assert!(out.contains("| Acme") && out.starts_with("EMAIL | PERSON_"), "{out}");
+}
+
+#[test]
 fn lowercase_words_and_titles_are_not_names() {
     let home = with_names("Rose\nPetit\nMme\n");
     let out = mask(&home, "la rose petit et Mme Petit");

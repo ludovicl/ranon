@@ -413,6 +413,7 @@ mod tests {
         assert!(masks_command("PGOPTIONS='-c statement_timeout=30s' psql \"$URL\" -c q"));
         assert!(masks_command("rtk psql -c q"));
         assert!(masks_command("heroku run \"rails c --sandbox\" -a my-app"));
+        assert!(masks_command("heroku logs -n 300 -a my-app"));
         assert!(masks_command("stripe customers retrieve cus_123"));
         assert!(masks_command("/opt/homebrew/opt/libpq/bin/psql -h host -c q"));
         assert!(!masks_command("cat privacy-psql.py"));

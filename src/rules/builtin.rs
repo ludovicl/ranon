@@ -62,8 +62,13 @@ const COMMON: RuleSet = RuleSet {
 };
 
 /// Databases and production consoles.
-const DATABASES: RuleSet =
-    RuleSet { name: "databases", keep: &[], columns: &[], values: &[], commands: &["psql", "heroku run"] };
+const DATABASES: RuleSet = RuleSet {
+    name: "databases",
+    keep: &[],
+    columns: &[],
+    values: &[],
+    commands: &["psql", "heroku run", "heroku logs"],
+};
 
 /// Banking and payments: SEPA transfers, card issuers (Treezor…), Stripe.
 const PAYMENTS: RuleSet = RuleSet {

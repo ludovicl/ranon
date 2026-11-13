@@ -296,7 +296,7 @@ impl Masker {
                 (m.start(), m.end(), candidate)
             })
             .collect();
-        let joined = |a: usize, b: usize| matches!(&text[words[a].1..words[b].0], " " | "-");
+        let joined = |a: usize, b: usize| is_name_gap(&text[words[a].1..words[b].0]);
         let mut mask = vec![false; words.len()];
         for i in 0..words.len() {
             if !words[i].2 {
@@ -321,6 +321,16 @@ impl Masker {
         out.push_str(&text[last..]);
         out
     }
+}
+
+/// What may sit between the first and last name of one person: a space or a hyphen in prose, or the
+/// separator of a record printed without column names (`a | b`, tabs, a Ruby or JSON array `"a", "b"`).
+/// A plain comma is left out: in prose it separates words of different people ("Bonjour, Jean").
+fn is_name_gap(gap: &str) -> bool {
+    if matches!(gap, " " | "-") {
+        return true;
+    }
+    !gap.contains('\n') && matches!(gap.trim_matches([' ', '\t']), "" | "|" | "\", \"" | "\",\"" | "', '" | "','")
 }
 
 fn is_plain_name(key: &str) -> bool {
