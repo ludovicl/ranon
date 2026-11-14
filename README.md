@@ -32,7 +32,7 @@ ranon plugs in at one of three places:
 
 | Mode | How | Covers |
 |---|---|---|
-| **Agent hook** | `ranon hook claude` as a Claude Code `PostToolUse` hook | Bash output of `psql`, `heroku run`, `stripe` (and any command you add), plus any MCP tool you match |
+| **Agent hook** | `ranon hook claude` as a Claude Code `PostToolUse` hook | Bash output of `psql`, `heroku run`, `heroku logs`, `stripe` (and any command you add), plus any MCP tool you match |
 | **PATH shim** | `ranon init` creates `psql → ranon`; put that directory first in the agent's PATH | Any agent harness, including output redirected to a file |
 | **Filter** | `ranon psql …`, `… \| ranon mask` | Manual use and scripts |
 
@@ -55,7 +55,7 @@ flowchart TD
 1. **Tables by column name.** Sensitive columns: first/last/full names, email, phone, IBAN, birth date and place, address, nationality, social security or tax number, payer/payee names (creditor, debtor, recipient, customer…), organisation name, IP addresses, passwords and tokens ([`src/rules/builtin.rs`](src/rules/builtin.rs)). Names are matched as written and in snake_case, so `dateOfBirth` and `Last Name` are covered like `date_of_birth` and `last_name`. Other columns (`id`, `status`, `amount`, `country`, …) stay readable, and so do identifiers, timestamps and flags about a personal field (`address_id`, `phone_verified_at`). A row whose separator count does not match the header is hidden rather than guessed.
 2. **Key/value pairs by key**: `first_name: "Jean"`, `"email": "…"`, `"last_name"=>"…"`, JSON inside a CSV cell, and YAML-like lines (`last_name: Dupont`).
 3. **Value patterns anywhere**: email, IBAN (known country code and plausible length), French phone numbers, IPv4 addresses.
-4. **Full names in free text**: two or more consecutive capitalized words found in the name dictionary (`Jean Dupont`, `DUPONT Marie-Anne`), or one after a title (`M. Dupont`, `Mme Petit`). A lone dictionary word is left alone, because real databases contain junk "names" such as *Bonjour* or *Paris*.
+4. **Full names in free text**: two or more consecutive capitalized words found in the name dictionary (`Jean Dupont`, `DUPONT Marie-Anne`), or one after a title (`M. Dupont`, `Mme Petit`). Words split only by a record separator count as consecutive: a pipe, a tab or the items of a quoted array (`Jean | Dupont`, `["Jean", "Dupont"]`), but not a plain comma, which in prose separates different people. A lone dictionary word is left alone, because real databases contain junk "names" such as *Bonjour* or *Paris*.
 
 `psql -t` / `--tuples-only` output is hidden: without a header there is no column name to mask by.
 
@@ -69,7 +69,7 @@ A name is masked in one of two ways, depending on where it shows up.
 
 1. `ranon dict build` reads the first and last names of your users table. Each word is lowercased, stripped of its accents and hashed with the local salt; only the hash is written to `names.bin`. The names are never printed, so the agent that runs the command does not see them.
 2. For each capitalized word of the text, ranon computes the same hash and looks it up.
-3. A word found in the dictionary is masked only next to another dictionary word (`Jean Dupont`, `DUPONT Marie-Anne`) or after a title (`M. Dupont`).
+3. A word found in the dictionary is masked only next to another dictionary word (`Jean Dupont`, `DUPONT Marie-Anne`) or after a title (`M. Dupont`), including across a record separator (`Jean | Dupont`).
 
 The dictionary does not try to know every surname in the world, only the names of the people whose data can come out of your systems. The list is as long as your users table, and a rare surname is in it as soon as one user bears it.
 
@@ -105,7 +105,7 @@ Built-in rules are grouped by source in [`src/rules/builtin.rs`](src/rules/built
 | `payments` | IBAN, creditor/debtor/recipient/cardholder names, card embossed names, Stripe `customer`, `billing_details`, `shipping`, `individual`; command `stripe` |
 | `collaboration` | `user.name` in Notion and GitHub user objects, Slack `real_name`, `display_name`, `userName` |
 | `security` | IP addresses, passwords, API keys and tokens |
-| `databases` | commands `psql`, `heroku run` |
+| `databases` | commands `psql`, `heroku run`, `heroku logs` |
 
 ### Your own rules
 
@@ -198,7 +198,7 @@ In `.claude/settings.json`:
 }
 ```
 
-For Bash, only the outputs of `psql`, `heroku run`, `stripe` and the `commands` of your rules files are masked. For any other matched tool, every string of the response is. If masking fails (unusable state, invalid rules file, unreadable payload, internal error), the output is replaced by an error message (fail closed).
+For Bash, only the outputs of `psql`, `heroku run`, `heroku logs`, `stripe` and the `commands` of your rules files are masked. For any other matched tool, every string of the response is. If masking fails (unusable state, invalid rules file, unreadable payload, internal error), the output is replaced by an error message (fail closed).
 
 **Writing back.** When the model writes to a tool (a Notion comment, a page), its text holds tokens. The `PreToolUse` hook puts the real values back, locally, just before the call, and asks you to approve it since the input changed. Unknown tokens are left as they are.
 
@@ -255,7 +255,7 @@ Steps:
      (create, update, comment), so that tokens become real values again before
      a write, with my approval.
 4. For each CLI of my list that ranon does not mask by default (it masks psql,
-   heroku run and stripe), add it to ~/.config/ranon/rules.d/<source>.toml:
+   heroku run, heroku logs and stripe), add it to ~/.config/ranon/rules.d/<source>.toml:
    commands = ["<cli>"]
 5. Add a PreToolUse guard on Bash and on the same MCP tools that blocks the call
    when `ranon` is not in PATH. Without it, a missing binary lets the raw output
