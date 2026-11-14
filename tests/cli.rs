@@ -409,12 +409,12 @@ fn rules_d_files_are_loaded_and_named() {
     let home = home();
     std::fs::create_dir_all(home.join("rules.d")).unwrap();
     std::fs::write(home.join("rules.d/notion.toml"), "[[column]]\npattern = '^client$'\nkind = \"PERSON\"\n").unwrap();
-    std::fs::write(home.join("rules.d/leeto.toml"), "keep = ['^city$']\ncommands = ['composio']\n").unwrap();
+    std::fs::write(home.join("rules.d/company.toml"), "keep = ['^city$']\ncommands = ['composio']\n").unwrap();
     let (listing, _, code) = run_with(Path::new(BIN), &home, &["rules", "Client", "city", "iban", "status"], "");
     assert_eq!(code, 0);
     for line in [
         "Client: PERSON (notion.toml)",
-        "city: kept visible (keep in leeto.toml)",
+        "city: kept visible (keep in company.toml)",
         "iban: IBAN (built-in payments)",
         "status: kept visible",
         "commands: composio",
