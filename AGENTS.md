@@ -18,6 +18,7 @@ A single Rust binary that masks personal data in command and tool output before 
 | `src/store.rs` | State directory: salt, token map, HMAC tokens (collision-free), unmasking, forgetting |
 | `src/proxy.rs` | Runs the real command found further down `PATH` and masks its output |
 | `src/hook.rs` | Claude Code hook: `PostToolUse` masks output, `PreToolUse` restores real values before writes, `hook.log` |
+| `src/init.rs` | `ranon init`: wires Claude Code, OpenCode or Codex in one command, keeping existing settings; `--dry-run`, `--show`, `--uninstall` |
 | `src/doctor.rs` | `ranon doctor`: checks binary, rules, state, dictionary and Claude Code hooks |
 | `tests/cli.rs` | Integration tests running the real binary with an isolated `RANON_HOME` and `RANON_CONFIG_DIR` |
 

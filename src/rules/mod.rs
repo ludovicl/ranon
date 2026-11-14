@@ -247,6 +247,19 @@ pub fn masks_command(command: &str) -> bool {
     rules().commands.is_match(command)
 }
 
+/// Programs whose output is masked (`heroku` for `heroku run`), once each: the shims `ranon init` creates.
+pub fn command_programs() -> Vec<String> {
+    let mut programs: Vec<String> = Vec::new();
+    for (command, _) in &rules().command_list {
+        if let Some(program) = command.split_whitespace().next()
+            && !programs.iter().any(|known| known == program)
+        {
+            programs.push(program.to_string());
+        }
+    }
+    programs
+}
+
 pub fn summary() -> String {
     let rules = rules();
     let mut lines = vec![format!("config directory: {}", config_dir().display())];

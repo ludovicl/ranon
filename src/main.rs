@@ -13,6 +13,7 @@ compile_error!("ranon supports Unix-like systems only (Linux, macOS)");
 
 mod doctor;
 mod hook;
+mod init;
 mod mask;
 mod names;
 mod proxy;
@@ -58,11 +59,26 @@ enum Cmd {
         #[arg(long, value_name = "DAYS")]
         older_than: Option<u64>,
     },
-    /// Create shims (symlinks to ranon) for the given commands, to put first in the agent's PATH
+    /// Wire ranon into an agent: `ranon init` (Claude Code), `ranon init --agent codex -g`…
     Init {
+        /// Harness to configure
+        #[arg(long, value_enum, default_value = "claude")]
+        agent: init::Agent,
+        /// Configure the user-level settings instead of the current project's
+        #[arg(short, long)]
+        global: bool,
+        /// Show what would change without writing anything
+        #[arg(long)]
+        dry_run: bool,
+        /// Remove what `ranon init` added, and nothing else
+        #[arg(long)]
+        uninstall: bool,
+        /// Show where ranon is wired, for every harness
+        #[arg(long)]
+        show: bool,
         #[arg(long, default_value = "~/.local/share/ranon/shims")]
         shim_dir: String,
-        #[arg(default_values_t = vec!["psql".to_string()])]
+        /// Commands to shim (default: every masked command, from the built-in and your rules)
         commands: Vec<String>,
     },
     /// Run a command and mask its output: `ranon psql -c "select …"`
@@ -111,7 +127,9 @@ fn main() {
         Cmd::Rules { names } => rules(&names),
         Cmd::Doctor => doctor::run(),
         Cmd::Forget { older_than } => forget(older_than),
-        Cmd::Init { shim_dir, commands } => init(&shim_dir, &commands),
+        Cmd::Init { agent, global, dry_run, uninstall, show, shim_dir, commands } => {
+            init(agent, global, dry_run, uninstall, show, &shim_dir, commands)
+        }
         Cmd::Run(argv) => match argv.split_first() {
             Some((name, rest)) => proxy::run(&name.to_string_lossy(), rest),
             None => fail("missing command"),
@@ -213,21 +231,26 @@ fn dict_build(from_stdin: bool, db_url_env: &str, sql: &str, replace: bool) -> i
     }
 }
 
-fn init(shim_dir: &str, commands: &[String]) -> i32 {
-    let home = std::env::var("HOME").unwrap_or_default();
-    let dir = PathBuf::from(shim_dir.replacen('~', &home, 1));
-    let Ok(exe) = std::env::current_exe() else { return fail("cannot locate ranon binary") };
-    if let Err(error) = std::fs::create_dir_all(&dir) {
-        return fail(&error.to_string());
+fn init(
+    agent: init::Agent,
+    global: bool,
+    dry_run: bool,
+    uninstall: bool,
+    show: bool,
+    shim_dir: &str,
+    commands: Vec<String>,
+) -> i32 {
+    let shim_dir = init::expand(shim_dir);
+    if show {
+        return init::show(&shim_dir);
     }
-    for command in commands {
-        let link = dir.join(command);
-        std::fs::remove_file(&link).ok();
-        if let Err(error) = std::os::unix::fs::symlink(&exe, &link) {
-            return fail(&format!("{}: {error}", link.display()));
-        }
-        println!("shim: {} -> {}", link.display(), exe.display());
+    if let Err(error) = rules::load() {
+        return fail(&error);
     }
-    println!("\nPut {} first in the agent's PATH only (not your own shell).", dir.display());
-    0
+    let commands = if commands.is_empty() { rules::command_programs() } else { commands };
+    let options = init::Options { agent, global, dry_run, uninstall, shim_dir, commands };
+    match init::run(&options) {
+        Ok(()) => 0,
+        Err(error) => fail(&error),
+    }
 }

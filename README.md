@@ -33,7 +33,7 @@ ranon plugs in at one of three places:
 | Mode | How | Covers |
 |---|---|---|
 | **Agent hook** | `ranon hook claude` as a Claude Code `PostToolUse` hook | Bash output of `psql`, `heroku run`, `heroku logs`, `stripe` (and any command you add), plus any MCP tool you match |
-| **PATH shim** | `ranon init` creates `psql → ranon`; put that directory first in the agent's PATH | Any agent harness, including output redirected to a file |
+| **PATH shim** | `ranon init --agent opencode` or `codex` creates `psql → ranon` and puts that directory first in the agent's PATH | Any agent harness, including output redirected to a file |
 | **Filter** | `ranon psql …`, `… \| ranon mask` | Manual use and scripts |
 
 ### The masking pipeline
@@ -163,9 +163,14 @@ Requires Rust 1.88+ on Linux or macOS.
 
 ```sh
 cargo install --git https://github.com/ludovicl/ranon
+ranon init          # Claude Code, this project; -g for every project
 ```
 
-The sections below describe each step. To have your agent do them, see [Let your agent set it up](#let-your-agent-set-it-up).
+Then restart the agent session. That is the whole setup; the rest of this section explains what it does.
+
+Other harnesses take one flag: `ranon init --agent opencode` or `ranon init --agent codex`, with `-g` for the user-level config. `--dry-run` prints the change without writing it, `--show` lists where ranon is wired, `--uninstall` removes ranon's entries and nothing else. Existing settings are kept, and running `ranon init` twice changes nothing.
+
+To mask names in free text too, build the [name dictionary](#name-dictionary-optional-for-pass-4). To have your agent check the setup on real output, see [Let your agent set it up](#let-your-agent-set-it-up).
 
 ### Name dictionary (optional, for pass 4)
 
@@ -181,28 +186,32 @@ Names go straight from `psql` into the hasher; they are never printed. `--db-url
 
 ### Claude Code hook
 
-In `.claude/settings.json`:
+`ranon init` adds three hooks to `.claude/settings.json` (or `~/.claude/settings.json` with `-g`):
 
 ```json
 {
   "hooks": {
     "PostToolUse": [
-      { "matcher": "Bash|mcp__notion__.*|mcp__slack__.*|mcp__metabase__.*",
+      { "matcher": "Bash|mcp__.*",
         "hooks": [{ "type": "command", "command": "ranon hook claude" }] }
     ],
     "PreToolUse": [
-      { "matcher": "mcp__notion__notion-(create|update).*",
-        "hooks": [{ "type": "command", "command": "ranon hook claude" }] }
+      { "matcher": "mcp__.*__.*(create|update|send|post|comment|reply|write|edit|add).*",
+        "hooks": [{ "type": "command", "command": "ranon hook claude" }] },
+      { "matcher": "Bash|mcp__.*",
+        "hooks": [{ "type": "command", "command": "command -v ranon >/dev/null 2>&1 || { echo 'ranon is missing: output would not be masked' >&2; exit 2; }" }] }
     ]
   }
 }
 ```
 
+A hook that already runs `ranon hook` keeps its matcher: to mask fewer MCP servers, narrow it by hand (`Bash|mcp__notion__.*`) and `ranon init` will leave it alone.
+
 For Bash, only the outputs of `psql`, `heroku run`, `heroku logs`, `stripe` and the `commands` of your rules files are masked. For any other matched tool, every string of the response is. If masking fails (unusable state, invalid rules file, unreadable payload, internal error), the output is replaced by an error message (fail closed).
 
 **Writing back.** When the model writes to a tool (a Notion comment, a page), its text holds tokens. The `PreToolUse` hook puts the real values back, locally, just before the call, and asks you to approve it since the input changed. Unknown tokens are left as they are.
 
-Two failures are out of ranon's reach, because Claude Code then keeps the raw output: a hook whose binary is missing, and a hook that times out. A `PreToolUse` guard that blocks the masked commands and tools when `ranon` is not in `PATH` is a good companion.
+Two failures are out of ranon's reach, because Claude Code then keeps the raw output: a hook whose binary is missing, and a hook that times out. The third hook covers the first: it blocks Bash and MCP calls while `ranon` is not in `PATH`.
 
 ### Check the setup
 
@@ -235,7 +244,7 @@ My setup:
 
 Rules for this whole task:
 - Never print, read or copy a real name, email or other personal value. Do not
-  run a query that returns personal data until step 6 says the hook is active.
+  run a query that returns personal data until step 5 says the hook is active.
 - Never open, print or commit the files of ~/.local/state/ranon (salt, map.tsv,
   names.bin). Never print the database URL.
 - Do not commit or push anything. Show me the diff of every file you change.
@@ -248,26 +257,20 @@ Steps:
 2. Build the name dictionary with the variable and the query above:
    ranon dict build --db-url-env <VARIABLE> --sql "<QUERY>"
    The names go straight into a hasher. Report only the count from `ranon dict stats`.
-3. Add the hooks to .claude/settings.json, keeping what is already there:
-   - PostToolUse, command `ranon hook claude`, with a matcher covering Bash and
-     every MCP server of my list (mcp__<server>__.*).
-   - PreToolUse, same command, on the MCP tools that write to those servers
-     (create, update, comment), so that tokens become real values again before
-     a write, with my approval.
-4. For each CLI of my list that ranon does not mask by default (it masks psql,
+3. For each CLI of my list that ranon does not mask by default (it masks psql,
    heroku run, heroku logs and stripe), add it to ~/.config/ranon/rules.d/<source>.toml:
    commands = ["<cli>"]
-5. Add a PreToolUse guard on Bash and on the same MCP tools that blocks the call
-   when `ranon` is not in PATH. Without it, a missing binary lets the raw output
-   through. If the project already has a guard script, extend it.
-6. Ask me to restart the session so the hooks load. Then run `ranon doctor` from
+4. Run `ranon init --dry-run`, show me the change, then `ranon init`. It adds the
+   masking, write-back and missing-binary hooks to .claude/settings.json and
+   keeps everything already there.
+5. Ask me to restart the session so the hooks load. Then run `ranon doctor` from
    the project root: every line must be `ok`.
-7. Test on real output, one source at a time. Select a single row by ID, with the
+6. Test on real output, one source at a time. Select a single row by ID, with the
    columns under their own names. In each result, list the fields that are still
    readable and look personal, by field name only. For each one, propose a
    [[column]] rule for ~/.config/ranon/rules.d/, check it with `ranon rules <name>`
    and run the same call again.
-8. Finish with a summary: sources tested, rules added, what stays unmasked (see
+7. Finish with a summary: sources tested, rules added, what stays unmasked (see
    the Limits section of the README), and the line of `ranon doctor` on hook
    activity.
 
@@ -277,20 +280,35 @@ the output of a masked command to a file or to the background, where the hook
 does not see it.
 ````
 
-Step 7 is where a setup gets safe: field names differ in every company, and only real output shows the ones the built-in rules miss. The agent will see the values of the fields that are not covered yet, so start with a single row.
+Step 6 is where a setup gets safe: field names differ in every company, and only real output shows the ones the built-in rules miss. The agent will see the values of the fields that are not covered yet, so start with a single row.
 
-On another harness, step 3 changes: a PATH shim replaces the hook, and no `PreToolUse` pass puts real values back before a write. The rest of the prompt holds as it is.
+On another harness, step 4 becomes `ranon init --agent opencode` or `--agent codex`: a PATH shim replaces the hook (see [Harnesses](#harnesses)), and no `PreToolUse` pass puts real values back before a write. The rest of the prompt holds as it is.
+
+### Harnesses
+
+What ranon can mask depends on what the harness lets a hook do. Only Claude Code lets a hook rewrite any tool output; elsewhere, the PATH shim covers shell commands and MCP output stays in clear.
+
+| Harness | Shell commands | MCP tools | Real values back before a write | Wiring |
+|---|---|---|---|---|
+| Claude Code | yes, hook | yes, hook | yes, `PreToolUse` | `ranon init`, [details](#claude-code-hook) |
+| OpenCode | yes, PATH shim | no | no | `ranon init --agent opencode`, [details](#opencode) |
+| Codex CLI | yes, PATH shim | no | no | `ranon init --agent codex`, [details](#codex-cli) |
+| Cursor | not supported | not supported | no | [why](#cursor) |
 
 ### PATH shim (any agent)
 
 ```sh
-ranon init                 # ~/.local/share/ranon/shims/psql -> ranon
-ranon init heroku psql     # several commands
+ranon init --agent shims              # a shim for every masked command
+ranon init --agent shims psql heroku  # or for these only
 ```
 
 Put `~/.local/share/ranon/shims` first in the **agent's** PATH only, not your own shell. The agent keeps typing `psql`; ranon finds the real binary further down the PATH, runs it and masks stdout and stderr, keeping the exit code.
 
-Where that PATH is set depends on the harness. OpenCode hands the environment of every shell command to a plugin, so one file is enough:
+Where that PATH is set depends on the harness.
+
+#### OpenCode
+
+`ranon init --agent opencode` creates the shims and writes this plugin to `.opencode/plugins/ranon.ts` (`-g`: `~/.config/opencode/plugins/ranon.ts`). OpenCode hands the environment of every shell command to a plugin, so one file is enough:
 
 ```ts
 // .opencode/plugins/ranon.ts, or ~/.config/opencode/plugins/ranon.ts for every project
@@ -313,6 +331,30 @@ export default {
   },
 }
 ```
+
+#### Codex CLI
+
+`ranon init --agent codex -g` creates the shims and adds this to `~/.codex/config.toml` (without `-g`: `.codex/config.toml`, read only in a trusted project):
+
+```toml
+[shell_environment_policy]
+# replaces PATH: write the full value, shims first
+set = { PATH = "/home/you/.local/share/ranon/shims:/usr/local/bin:/usr/bin:/bin" }
+
+[sandbox_workspace_write]
+# ranon must save its token map, or it hides every output holding a new value
+writable_roots = ["/home/you/.local/state/ranon"]
+```
+
+`set` replaces the variable rather than prepending to it, so copy your current `PATH` after the shims (`echo "$HOME/.local/share/ranon/shims:$PATH"`). Without the writable root, the default `workspace-write` sandbox stops ranon from saving `map.tsv`: the command then prints `ranon: cannot save token map …, output hidden` instead of its output. That is safe but useless. The sandbox also blocks network access by default, so `psql` or `heroku` need it allowed as well.
+
+Codex hooks cannot stand in for the shim: a `PostToolUse` hook can block a result or add context, but not rewrite it (`updatedMCPToolOutput` is parsed and not supported). MCP output therefore stays in clear. Checked with Codex CLI 0.153.4: through the shims, a table of names and emails reached the model as tokens, and the new values were saved.
+
+#### Cursor
+
+Not supported yet. Cursor hooks cannot replace shell output (`afterShellExecution` only observes it), and its docs describe no way to set the PATH of the agent's commands. Two hooks could carry an adapter that does not exist yet: `preToolUse` can rewrite a shell command before it runs (`updated_input`), for instance to pipe it through `ranon mask`, and `postToolUse` can replace the output of a local MCP tool (`updated_mcp_tool_output`). Neither is implemented in ranon.
+
+#### Check the wiring
 
 Check it from the agent rather than from your shell: `command -v psql` must print the shim, and a query returning a name must show a token. `ranon doctor` only covers the binary and the Claude Code hooks, so with a shim it says nothing about the wiring.
 
@@ -357,6 +399,7 @@ ranon is a filter, not a security boundary.
 - Values outside the known columns, keys and patterns, names missing from the dictionary and lone first names in free text go through.
 - The hook only sees what a tool returns to the agent. Output sent to a file or produced by a background command, then read as a file, is not masked; neither is a tool missing from the hook's matcher. Pipe such output through `ranon mask` before it is written.
 - Calling the real binary by absolute path bypasses the shim.
+- The agent runs as you, so it can read `map.tsv` and unmask everything; under Codex the writable root also lets it change the file. Keeping the state away from the agent takes a separate user or a sandbox that hides the directory.
 - For real isolation, give the agent a database role that can only read pseudonymized views.
 
 ## Development

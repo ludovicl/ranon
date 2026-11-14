@@ -291,11 +291,75 @@ fn proxy_masks_output_and_keeps_exit_code() {
 fn shim_runs_the_real_command_masked() {
     let home = home();
     let shims = home.join("shims");
-    ranon(&home, &["init", "--shim-dir", shims.to_str().unwrap(), "printf"], "");
+    ranon(&home, &["init", "--agent", "shims", "--shim-dir", shims.to_str().unwrap(), "printf"], "");
     let (out, _, code) = run_with(&shims.join("printf"), &home, &["email\\njean@x.fr\\n"], "");
     assert_eq!(code, 0);
     assert_hidden(&out, &["jean@x.fr"]);
     assert!(out.contains("EMAIL_"));
+}
+
+/// `ranon init` run from `project`, with `home` as both HOME and ranon's state and config directories.
+fn init_in(home: &Path, project: &Path, args: &[&str]) -> (String, String, i32) {
+    std::fs::create_dir_all(project).unwrap();
+    let out = Command::new(BIN)
+        .arg("init")
+        .args(args)
+        .current_dir(project)
+        .env("HOME", home)
+        .env("RANON_HOME", home.join("state"))
+        .env("RANON_CONFIG_DIR", home.join("config"))
+        .env_remove("XDG_CONFIG_HOME")
+        .env_remove("CODEX_HOME")
+        .output()
+        .unwrap();
+    (String::from_utf8(out.stdout).unwrap(), String::from_utf8(out.stderr).unwrap(), out.status.code().unwrap_or(-1))
+}
+
+#[test]
+fn init_wires_claude_code_and_undoes_it() {
+    let home = home();
+    let project = home.join("project");
+    let (dry, _, code) = init_in(&home, &project, &["--dry-run"]);
+    assert_eq!(code, 0, "{dry}");
+    assert!(dry.contains("would create") && !project.join(".claude").exists(), "{dry}");
+
+    let (_, err, code) = init_in(&home, &project, &[]);
+    assert_eq!(code, 0, "{err}");
+    let settings = std::fs::read_to_string(project.join(".claude/settings.json")).unwrap();
+    assert!(settings.contains("ranon hook claude") && settings.contains("ranon is missing"), "{settings}");
+    let (again, _, _) = init_in(&home, &project, &[]);
+    assert!(again.contains("already up to date"), "{again}");
+
+    let (_, _, code) = init_in(&home, &project, &["--uninstall"]);
+    assert_eq!(code, 0);
+    assert!(!project.join(".claude/settings.json").exists());
+}
+
+#[test]
+fn init_wires_codex_globally_with_shims() {
+    let home = home();
+    let project = home.join("project");
+    let shims = home.join("shims");
+    let (out, err, code) =
+        init_in(&home, &project, &["--agent", "codex", "-g", "--shim-dir", shims.to_str().unwrap(), "printf"]);
+    assert_eq!(code, 0, "{out}{err}");
+    assert!(std::fs::symlink_metadata(shims.join("printf")).unwrap().file_type().is_symlink());
+    let config = std::fs::read_to_string(home.join(".codex/config.toml")).unwrap();
+    assert!(config.contains(&format!("{}:", shims.display())), "{config}");
+    assert!(config.contains(&home.join("state").display().to_string()), "{config}");
+    let (shown, _, _) = init_in(&home, &project, &["--show", "--shim-dir", shims.to_str().unwrap()]);
+    assert!(shown.lines().any(|line| line.contains("codex") && line.contains("installed")), "{shown}");
+}
+
+#[test]
+fn init_leaves_a_foreign_opencode_plugin_alone() {
+    let home = home();
+    let project = home.join("project");
+    std::fs::create_dir_all(project.join(".opencode/plugins")).unwrap();
+    std::fs::write(project.join(".opencode/plugins/ranon.ts"), "export default {}\n").unwrap();
+    let (_, err, code) = init_in(&home, &project, &["--agent", "opencode", "--shim-dir", "/nonexistent/shims", "x"]);
+    assert_eq!(code, 1);
+    assert!(err.contains("was not written by ranon"), "{err}");
 }
 
 #[test]
