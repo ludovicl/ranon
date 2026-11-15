@@ -29,7 +29,7 @@ fn reads_data_file(payload: &Value) -> bool {
         .is_some_and(|ext| DATA_FILES.contains(&ext.to_ascii_lowercase().as_str()))
 }
 
-fn walk(value: &mut Value, masker: &mut Masker) -> bool {
+pub(crate) fn walk(value: &mut Value, masker: &mut Masker) -> bool {
     match value {
         // a screenshot cannot be masked, and its base64 would be corrupted by the value patterns
         Value::Object(map) if map.get("type").and_then(Value::as_str) == Some("image") => false,
@@ -46,7 +46,7 @@ fn walk(value: &mut Value, masker: &mut Masker) -> bool {
 }
 
 /// One line per masked or hidden output in `hook.log`: time, tool, outcome, number of values. No content.
-fn log(tool_name: &str, outcome: &str, values: usize) {
+pub(crate) fn log(tool_name: &str, outcome: &str, values: usize) {
     if cfg!(test) {
         // unit tests run without RANON_HOME and must not write to the user's state directory
         return;
@@ -100,7 +100,7 @@ fn unmasked_input(payload: &Value) -> Result<Option<(Value, usize)>, String> {
     Ok((restored > 0).then_some((input, restored)))
 }
 
-fn restore(value: &mut Value, masker: &Masker, restored: &mut usize) {
+pub(crate) fn restore(value: &mut Value, masker: &Masker, restored: &mut usize) {
     match value {
         Value::String(text) => {
             let unmasked = masker.store.unmask(text);

@@ -254,3 +254,115 @@ fn required(program: &str, env: &str) -> Option<PathBuf> {
     }
     found
 }
+
+// --- Cursor -------------------------------------------------------------------------------------
+// Cursor is not installed in CI: the payloads follow https://cursor.com/docs/agent/hooks (15/11/2026).
+
+fn cursor_hook(home: &Path, payload: serde_json::Value) -> (serde_json::Value, i32) {
+    let mut child = command(BIN, home)
+        .args(["hook", "cursor"])
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    std::io::Write::write_all(&mut child.stdin.take().unwrap(), payload.to_string().as_bytes()).unwrap();
+    let out = child.wait_with_output().unwrap();
+    let json = serde_json::from_slice(&out.stdout).unwrap_or(serde_json::Value::Null);
+    (json, out.status.code().unwrap_or(-1))
+}
+
+fn cursor_payload(event: &str, tool: &str, input: serde_json::Value) -> serde_json::Value {
+    serde_json::json!({ "conversation_id": "c", "generation_id": "g", "model": "m", "hook_event_name": event,
+        "cursor_version": "1", "workspace_roots": ["/home/dev/project"], "tool_name": tool,
+        "tool_input": input, "tool_use_id": "t", "cwd": "/home/dev/project" })
+}
+
+#[test]
+fn cursor_init_writes_hooks_json() {
+    let home = home();
+    let project = home.join("project");
+    std::fs::create_dir_all(&project).unwrap();
+    stdout(command(BIN, &home).args(["init", "--agent", "cursor"]).current_dir(&project));
+    let config: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(project.join(".cursor/hooks.json")).unwrap()).unwrap();
+    assert_eq!(config["version"], 1);
+    for event in ["preToolUse", "postToolUse"] {
+        assert_eq!(config["hooks"][event][0]["command"], "ranon hook cursor", "{config}");
+    }
+}
+
+#[test]
+fn cursor_shell_commands_run_through_ranon() {
+    let home = home();
+    let path = fake_psql(&home);
+    let query = "psql -c 'select first_name, last_name, email from users'";
+    let (output, code) =
+        cursor_hook(&home, cursor_payload("preToolUse", "Shell", serde_json::json!({ "command": query })));
+    assert_eq!(code, 0);
+    let rewritten = output["updated_input"]["command"].as_str().unwrap();
+    assert!(rewritten.starts_with("ranon sh -c "), "{output}");
+
+    // Cursor runs the rewritten command in its shell, where `ranon` is on the PATH
+    let bin = Path::new(BIN).parent().unwrap().display().to_string();
+    let out = stdout(command("sh", &home).args(["-c", rewritten]).env("PATH", format!("{bin}:{path}")));
+    assert_hidden(&out);
+    assert!(out.contains("PERSON_") && out.contains("EMAIL_"), "{out}");
+
+    let (output, _) =
+        cursor_hook(&home, cursor_payload("preToolUse", "Shell", serde_json::json!({ "command": "git status" })));
+    assert_eq!(output, serde_json::json!({}));
+    let (output, _) =
+        cursor_hook(&home, cursor_payload("preToolUse", "Shell", serde_json::json!({ "command": rewritten })));
+    assert_eq!(output, serde_json::json!({}), "a rewritten command is not wrapped twice");
+}
+
+#[test]
+fn cursor_mcp_results_are_masked() {
+    let home = home();
+    let result = serde_json::json!({ "content": [{ "type": "text", "text": "contact: jean.dupont@example.com" }] });
+    let mut payload = cursor_payload("postToolUse", "MCP:notion-fetch", serde_json::json!({ "id": "page" }));
+    payload["tool_output"] = result.to_string().into();
+    let (output, code) = cursor_hook(&home, payload);
+    assert_eq!(code, 0);
+    let updated = &output["updated_mcp_tool_output"];
+    assert_hidden(&updated.to_string());
+    assert_eq!(updated["content"][0]["type"], "text");
+    assert!(updated["content"][0]["text"].as_str().unwrap().contains("EMAIL_"), "{output}");
+}
+
+#[test]
+fn cursor_mcp_inputs_get_real_values_back() {
+    let home = home();
+    let masked = stdout(
+        command(BIN, &home)
+            .args(["mask"])
+            .stdin(std::fs::File::open(write(&home.join("in.txt"), "email: jean.dupont@example.com\n")).unwrap()),
+    );
+    let token = masked.trim().strip_prefix("email: ").unwrap().to_string();
+    let payload = cursor_payload(
+        "preToolUse",
+        "MCP:notion-create-comment",
+        serde_json::json!({ "text": format!("ask {token}") }),
+    );
+    let (output, _) = cursor_hook(&home, payload);
+    assert_eq!(output["updated_input"]["text"], "ask jean.dupont@example.com");
+}
+
+#[test]
+fn cursor_fails_closed() {
+    let home = home();
+    let (_, code) = cursor_hook(&home, serde_json::json!("not a payload"));
+    assert_eq!(code, 2, "an unreadable payload blocks the call");
+
+    // an unusable state hides an MCP result rather than letting it through
+    write(&home.join("state/salt"), "x");
+    std::fs::set_permissions(home.join("state"), std::fs::Permissions::from_mode(0o000)).unwrap();
+    let mut payload = cursor_payload("postToolUse", "MCP:notion-fetch", serde_json::json!({}));
+    payload["tool_output"] = r#"{"email": "jean.dupont@example.com"}"#.into();
+    let (output, code) = cursor_hook(&home, payload);
+    std::fs::set_permissions(home.join("state"), std::fs::Permissions::from_mode(0o700)).unwrap();
+    assert_eq!(code, 0);
+    assert_hidden(&output.to_string());
+    assert!(output.to_string().contains("output hidden"), "{output}");
+}

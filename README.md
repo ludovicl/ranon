@@ -54,10 +54,10 @@ ranon is a filter, not a security boundary: a name typed in a `where` clause, or
 | **Claude Code** | `ranon init -g` | hook | hook, with write-back |
 | **OpenCode** | `ranon init -g --agent opencode` | PATH shim | **not masked** |
 | **Codex CLI** | `ranon init -g --agent codex` | PATH shim | **not masked** |
-| **Cursor** | not supported yet | | |
+| **Cursor** | `ranon init -g --agent cursor` | command rewritten | hook |
 | Any other agent | `ranon init --agent shims` | PATH shim | **not masked** |
 
-Only Claude Code lets a hook rewrite any tool output. Elsewhere ranon sees shell commands only, so an MCP server that returns personal data reaches the model in clear: use it from Claude Code, or leave it off.
+Claude Code and Cursor let a hook mask MCP results. Elsewhere ranon sees shell commands only, so an MCP server that returns personal data reaches the model in clear: use it from Claude Code or Cursor, or leave it off.
 
 > What each agent's hooks allow, and what `ranon init` writes: **[Agents](docs/agents.md)**
 
@@ -66,7 +66,7 @@ Only Claude Code lets a hook rewrite any tool output. Elsewhere ranon sees shell
 | | |
 |---|---|
 | [Getting started](docs/getting-started.md) | `ranon init` options, name dictionary, `ranon doctor`, a prompt that has your agent check the setup |
-| [Agents](docs/agents.md) | Claude Code hooks, PATH shims for OpenCode and Codex, why not Cursor |
+| [Agents](docs/agents.md) | Claude Code and Cursor hooks, PATH shims for OpenCode and Codex |
 | [How it works](docs/how-it-works.md) | the masking passes, how names are recognized, tokens, local state and `ranon forget` |
 | [Rules](docs/rules.md) | built-in rules, your own rules per source, `ranon rules` |
 | [Limits](docs/limits.md) | what goes through |

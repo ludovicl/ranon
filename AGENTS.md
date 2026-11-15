@@ -18,10 +18,11 @@ A single Rust binary that masks personal data in command and tool output before 
 | `src/store.rs` | State directory: salt, token map, HMAC tokens (collision-free), unmasking, forgetting |
 | `src/proxy.rs` | Runs the real command found further down `PATH` and masks its output |
 | `src/hook.rs` | Claude Code hook: `PostToolUse` masks output, `PreToolUse` restores real values before writes, `hook.log` |
-| `src/init.rs` | `ranon init`: wires Claude Code, OpenCode or Codex in one command, keeping existing settings; `--dry-run`, `--show`, `--uninstall` |
+| `src/cursor.rs` | Cursor hook: `preToolUse` runs masked shell commands through ranon and restores MCP inputs, `postToolUse` masks MCP results |
+| `src/init.rs` | `ranon init`: wires Claude Code, Cursor, OpenCode or Codex in one command, keeping existing settings; `--dry-run`, `--show`, `--uninstall` |
 | `src/doctor.rs` | `ranon doctor`: checks binary, rules, state, dictionary and Claude Code hooks |
 | `tests/cli.rs` | Integration tests running the real binary with an isolated `RANON_HOME` and `RANON_CONFIG_DIR` |
-| `tests/harnesses.rs` | One test per agent: Claude Code hook payloads captured from a real session (`tests/fixtures/claude-code/`, synthetic data, ids and paths replaced), and a fake `psql` run through the config `ranon init` writes for Codex and OpenCode (the plugin runs under Node) |
+| `tests/harnesses.rs` | One test per agent: Claude Code hook payloads captured from a real session (`tests/fixtures/claude-code/`, synthetic data, ids and paths replaced), a fake `psql` run through the config `ranon init` writes for Codex (also in its own sandbox, `codex sandbox`, on macOS CI) and OpenCode (the plugin runs under Node), and Cursor payloads shaped like its documentation |
 
 ## Invariants (do not break)
 

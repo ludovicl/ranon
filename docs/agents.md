@@ -2,14 +2,14 @@
 
 `ranon init` wires each agent below and keeps what is already in its config. This page shows what it writes, and how to do it by hand.
 
-What ranon can mask depends on what the harness lets a hook do. Only Claude Code lets a hook rewrite any tool output; elsewhere, the PATH shim covers shell commands and MCP output stays in clear.
+What ranon can mask depends on what the harness lets a hook do. Claude Code lets a hook rewrite any tool output, Cursor the output of MCP tools and the input of shell commands; elsewhere, the PATH shim covers shell commands and MCP output stays in clear.
 
 | Harness | Shell commands | MCP tools | Real values back before a write | Wiring |
 |---|---|---|---|---|
 | Claude Code | yes, hook | yes, hook | yes, `PreToolUse` | `ranon init`, [details](#claude-code) |
 | OpenCode | yes, PATH shim | no | no | `ranon init --agent opencode`, [details](#opencode) |
 | Codex CLI | yes, PATH shim | no | no | `ranon init --agent codex`, [details](#codex-cli) |
-| Cursor | not supported | not supported | no | [why](#cursor) |
+| Cursor | yes, command rewritten | yes, hook | yes, without approval | `ranon init --agent cursor`, [details](#cursor) |
 
 ## Claude Code
 
@@ -97,7 +97,24 @@ Codex hooks cannot stand in for the shim: a `PostToolUse` hook can block a resul
 
 ### Cursor
 
-Not supported yet. Cursor hooks cannot replace shell output (`afterShellExecution` only observes it), and its docs describe no way to set the PATH of the agent's commands. Two hooks could carry an adapter that does not exist yet: `preToolUse` can rewrite a shell command before it runs (`updated_input`), for instance to pipe it through `ranon mask`, and `postToolUse` can replace the output of a local MCP tool (`updated_mcp_tool_output`). Neither is implemented in ranon.
+Cursor hooks cannot replace shell output (`afterShellExecution` only observes it), but `preToolUse` can rewrite a command before it runs and `postToolUse` can replace an MCP result. `ranon init --agent cursor` adds to `.cursor/hooks.json` (`~/.cursor/hooks.json` with `-g`):
+
+```json
+{
+  "version": 1,
+  "hooks": {
+    "preToolUse": [{ "command": "ranon hook cursor", "matcher": "Shell|MCP:.*", "failClosed": true }],
+    "postToolUse": [{ "command": "ranon hook cursor", "matcher": "MCP:.*", "failClosed": true }]
+  }
+}
+```
+
+- A shell command whose output is masked (`psql`, `heroku run`…) becomes `ranon sh -c '<command>'`: ranon runs it and masks what it prints. Other commands are left alone.
+- An MCP result is masked before the model reads it.
+- Tokens in an MCP input become real values again before the call. Cursor has no approval step for a rewritten input, unlike Claude Code: the real values are sent without asking.
+- `failClosed` makes Cursor block the call when the hook crashes or ranon is missing.
+
+Not covered: file reads (`beforeReadFile` can only allow or deny), and HTTP MCP servers in cloud agents, whose results Cursor does not let hooks replace. Tested with payloads shaped like Cursor's documentation, not in a real Cursor session.
 
 ### Check the wiring
 

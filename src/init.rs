@@ -2,7 +2,8 @@
 //!
 //! - Claude Code: hooks in `.claude/settings.json` (masking, write-back, and a guard for a missing binary);
 //! - OpenCode: shims, and a plugin that puts them first in the PATH of the agent's shell commands;
-//! - Codex CLI: shims, the PATH of its shell commands, and the state directory made writable in its sandbox.
+//! - Codex CLI: shims, the PATH of its shell commands, and the state directory made writable in its sandbox;
+//! - Cursor: hooks in `.cursor/hooks.json` that run masked commands through ranon and mask MCP results.
 //!
 //! Existing settings are kept: ranon only adds its own entries, and `--uninstall` only removes those.
 
@@ -29,6 +30,8 @@ pub enum Agent {
     Opencode,
     /// Codex CLI: shims, shell PATH and sandbox writable root in config.toml
     Codex,
+    /// Cursor: preToolUse and postToolUse hooks in hooks.json
+    Cursor,
     /// Shims only, for another harness
     Shims,
 }
@@ -67,6 +70,10 @@ fn opencode_plugin(global: bool) -> PathBuf {
     base(global, ".opencode", config.join("opencode")).join("plugins").join("ranon.ts")
 }
 
+fn cursor_hooks(global: bool) -> PathBuf {
+    base(global, ".cursor", home().join(".cursor")).join("hooks.json")
+}
+
 fn codex_config(global: bool) -> PathBuf {
     let user = std::env::var_os("CODEX_HOME").map(PathBuf::from).unwrap_or_else(|| home().join(".codex"));
     base(global, ".codex", user).join("config.toml")
@@ -102,9 +109,15 @@ pub fn run(options: &Options) -> Result<(), String> {
             let after = codex(&before, &options.shim_dir, &state_dir(), options.uninstall)?;
             (path, before, after)
         }
+        Agent::Cursor => {
+            let path = cursor_hooks(options.global);
+            let before = read(&path)?;
+            let after = cursor(&before, options.uninstall)?;
+            (path, before, after)
+        }
         Agent::Shims => unreachable!(),
     };
-    if options.agent != Agent::Claude {
+    if !matches!(options.agent, Agent::Claude | Agent::Cursor) {
         steps.push(shims(options)?);
     }
     steps.push(write(&path, &before, &after, options.dry_run)?);
@@ -288,6 +301,62 @@ fn remove_hooks(settings: &mut Value) {
     }
 }
 
+// --- Cursor ---------------------------------------------------------------------------------------------
+
+const CURSOR_COMMAND: &str = "ranon hook cursor";
+
+fn cursor(text: &str, uninstall: bool) -> Result<String, String> {
+    let mut config: Value = if text.trim().is_empty() {
+        json!({ "version": 1 })
+    } else {
+        serde_json::from_str(text).map_err(|error| format!("hooks.json is not valid JSON ({error}): fix it first"))?
+    };
+    if !config.is_object() {
+        return Err("hooks.json is not a JSON object".to_string());
+    }
+    let ours = |entry: &Value| entry["command"].as_str().is_some_and(|command| command.contains("ranon hook"));
+    if uninstall {
+        if let Some(hooks) = config.get_mut("hooks").and_then(Value::as_object_mut) {
+            for entries in hooks.values_mut() {
+                if let Some(entries) = entries.as_array_mut() {
+                    entries.retain(|entry| !ours(entry));
+                }
+            }
+            hooks.retain(|_, entries| entries.as_array().is_none_or(|list| !list.is_empty()));
+            if hooks.is_empty() {
+                config.as_object_mut().unwrap().remove("hooks");
+            }
+        }
+        let only_version = config.as_object().unwrap().keys().all(|key| key == "version");
+        if only_version {
+            return Ok(String::new());
+        }
+    } else {
+        // shell commands are rewritten before they run; MCP inputs get real values back, MCP results are masked.
+        // failClosed: a crashed or missing ranon blocks the call instead of letting it through
+        for (event, matcher) in [("preToolUse", "Shell|MCP:.*"), ("postToolUse", "MCP:.*")] {
+            let hooks = config.as_object_mut().unwrap().entry("hooks").or_insert_with(|| json!({}));
+            let entries = hooks
+                .as_object_mut()
+                .ok_or("hooks.json: `hooks` is not an object")?
+                .entry(event)
+                .or_insert_with(|| json!([]))
+                .as_array_mut()
+                .ok_or_else(|| format!("hooks.json: `{event}` is not an array"))?;
+            if !entries.iter().any(ours) {
+                entries.push(json!({ "command": CURSOR_COMMAND, "matcher": matcher, "failClosed": true }));
+            }
+        }
+    }
+    let unchanged = serde_json::from_str::<Value>(text).ok().is_some_and(|before| before == config);
+    if unchanged {
+        return Ok(text.to_string());
+    }
+    let mut out = serde_json::to_string_pretty(&config).map_err(|error| error.to_string())?;
+    out.push('\n');
+    Ok(out)
+}
+
 // --- OpenCode ---------------------------------------------------------------------------------------------
 
 fn opencode(shim_dir: &Path) -> String {
@@ -419,11 +488,13 @@ pub fn show(shim_dir: &Path) -> i32 {
         };
         let codex_text = read(&codex_config(global)).unwrap_or_default();
         let codex = codex_text.contains(&shim_dir.display().to_string());
+        let cursor = read(&cursor_hooks(global)).unwrap_or_default().contains(CURSOR_COMMAND);
         let mark = |on: bool| if on { "installed" } else { "-" };
         println!("{scope}:");
         println!("  claude    {:<17} {}", mark(claude), claude_settings(global).display());
         println!("  opencode  {opencode:<17} {}", opencode_plugin(global).display());
         println!("  codex     {:<17} {}", mark(codex), codex_config(global).display());
+        println!("  cursor    {:<17} {}", mark(cursor), cursor_hooks(global).display());
     }
     let links: Vec<String> = std::fs::read_dir(shim_dir)
         .into_iter()
@@ -505,5 +576,20 @@ mod tests {
         let plugin = opencode(Path::new("/h/shims"));
         assert!(plugin.starts_with(PLUGIN_MARK));
         assert!(plugin.contains(r#"const shims = "/h/shims""#));
+    }
+
+    #[test]
+    fn cursor_adds_its_hooks_keeps_others_and_undoes_it() {
+        let mine = r#"{"version": 1, "hooks": {"stop": [{"command": "./audit.sh"}]}}"#;
+        let added = cursor(mine, false).unwrap();
+        let config: Value = serde_json::from_str(&added).unwrap();
+        assert_eq!(config["hooks"]["stop"][0]["command"], "./audit.sh");
+        assert_eq!(config["hooks"]["preToolUse"][0]["matcher"], "Shell|MCP:.*");
+        assert_eq!(config["hooks"]["postToolUse"][0]["failClosed"], true);
+        assert_eq!(cursor(&added, false).unwrap(), added);
+        let removed: Value = serde_json::from_str(&cursor(&added, true).unwrap()).unwrap();
+        assert_eq!(removed, serde_json::from_str::<Value>(mine).unwrap());
+
+        assert_eq!(cursor(&cursor("", false).unwrap(), true).unwrap(), "");
     }
 }
