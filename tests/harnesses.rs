@@ -161,19 +161,23 @@ fn psql_through(home: &Path, path: &str) -> String {
     out
 }
 
-#[test]
-fn codex_shell_commands_are_masked() {
+/// `ranon init -g --agent codex` with a fake `psql` on the PATH it records.
+fn codex_home() -> PathBuf {
     let home = home();
     let path = fake_psql(&home);
-    let shims = home.join("shims");
     stdout(
         command(BIN, &home)
             .args(["init", "-g", "--agent", "codex", "--shim-dir"])
-            .arg(&shims)
+            .arg(home.join("shims"))
             .arg("psql")
             .env("PATH", &path),
     );
+    home
+}
 
+#[test]
+fn codex_shell_commands_are_masked() {
+    let home = codex_home();
     // Codex replaces the PATH of its shell commands with this value
     let config: toml_edit::DocumentMut =
         std::fs::read_to_string(home.join(".codex/config.toml")).unwrap().parse().unwrap();
@@ -181,13 +185,37 @@ fn codex_shell_commands_are_masked() {
     assert_hidden(&psql_through(&home, &codex_path));
 }
 
+/// Runs `psql` in Codex's own sandbox (`codex sandbox`, no model involved), with the config ranon wrote
+/// and the temporary directories made read-only, so the state directory is writable only through
+/// `writable_roots`.
+fn psql_in_codex_sandbox(codex: &Path, home: &Path, overrides: &[&str]) -> String {
+    let mut sandbox = command(codex.to_str().unwrap(), home);
+    sandbox.env("CODEX_HOME", home.join(".codex")).args(["sandbox", "-c", "sandbox_mode=\"workspace-write\""]);
+    for option in ["exclude_slash_tmp=true", "exclude_tmpdir_env_var=true"].iter().chain(overrides) {
+        sandbox.args(["-c", &format!("sandbox_workspace_write.{option}")]);
+    }
+    let out = sandbox.args(["--", "sh", "-c", "psql -c q"]).output().unwrap();
+    format!("{}{}", String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr))
+}
+
+#[test]
+fn codex_sandbox_lets_ranon_save_its_tokens() {
+    let Some(codex) = required("codex", "RANON_REQUIRE_CODEX") else { return };
+    let home = codex_home();
+    let out = psql_in_codex_sandbox(&codex, &home, &[]);
+    assert_hidden(&out);
+    assert!(out.contains("PERSON_") && out.contains("EMAIL_"), "{out}");
+
+    // without the writable root ranon cannot save new tokens: it hides the output instead of leaking it
+    std::fs::remove_file(home.join("state/map.tsv")).unwrap();
+    let out = psql_in_codex_sandbox(&codex, &home, &["writable_roots=[]"]);
+    assert_hidden(&out);
+    assert!(out.contains("output hidden"), "{out}");
+}
+
 #[test]
 fn opencode_shell_commands_are_masked() {
-    let Ok(node) = which("node") else {
-        assert!(std::env::var_os("CI").is_none(), "node is required in CI to run the OpenCode plugin");
-        eprintln!("skipped: node not found");
-        return;
-    };
+    let Some(node) = required("node", "CI") else { return };
     let home = home();
     let path = fake_psql(&home);
     let project = home.join("project");
@@ -216,8 +244,13 @@ fn opencode_shell_commands_are_masked() {
     assert_hidden(&psql_through(&home, &opencode_path));
 }
 
-fn which(program: &str) -> Result<PathBuf, ()> {
-    std::env::var_os("PATH")
-        .and_then(|paths| std::env::split_paths(&paths).map(|dir| dir.join(program)).find(|path| path.is_file()))
-        .ok_or(())
+/// `program` from the PATH. Missing, the test is skipped, unless `env` is set (in CI) and then it fails.
+fn required(program: &str, env: &str) -> Option<PathBuf> {
+    let found = std::env::var_os("PATH")
+        .and_then(|paths| std::env::split_paths(&paths).map(|dir| dir.join(program)).find(|path| path.is_file()));
+    if found.is_none() {
+        assert!(std::env::var_os(env).is_none(), "{program} is required when {env} is set");
+        eprintln!("skipped: {program} not found");
+    }
+    found
 }

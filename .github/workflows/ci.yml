@@ -16,6 +16,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24 # runs the OpenCode plugin in tests/harnesses.rs
+      # runs psql through Codex's own sandbox in tests/harnesses.rs; on Linux it needs user namespaces
+      - if: runner.os == 'macOS'
+        run: |
+          npm install -g @openai/codex@0.153.4
+          echo RANON_REQUIRE_CODEX=1 >> "$GITHUB_ENV"
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
