@@ -17,8 +17,22 @@ fn psql_tuples_only(command: &str) -> bool {
             .is_match(command)
 }
 
+/// Files read with the Read tool are masked only when they hold data (exports, logs, API dumps): masking
+/// source code would turn its fixtures into tokens that the model then copies into its edits.
+const DATA_FILES: &[&str] = &["csv", "tsv", "json", "jsonl", "ndjson", "txt", "log", "xml", "html", "sql"];
+
+fn reads_data_file(payload: &Value) -> bool {
+    let path = payload["tool_input"]["file_path"].as_str().unwrap_or_default();
+    std::path::Path::new(path)
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .is_some_and(|ext| DATA_FILES.contains(&ext.to_ascii_lowercase().as_str()))
+}
+
 fn walk(value: &mut Value, masker: &mut Masker) -> bool {
     match value {
+        // a screenshot cannot be masked, and its base64 would be corrupted by the value patterns
+        Value::Object(map) if map.get("type").and_then(Value::as_str) == Some("image") => false,
         Value::String(text) => {
             let masked = masker.mask_text(text);
             let changed = masked != *text;
@@ -61,6 +75,9 @@ fn masked_response(payload: &Value) -> Result<Option<Value>, String> {
             return Ok(Some(response));
         }
     }
+    if tool_name == "Read" && !reads_data_file(payload) {
+        return Ok(None);
+    }
     let mut masker = Masker::open().map_err(|e| e.to_string())?;
     let before = response.clone();
     masker.mask_json(&mut response);
@@ -101,6 +118,8 @@ fn restore(value: &mut Value, masker: &Masker, restored: &mut usize) {
 fn hidden_output(tool_name: &str, message: String) -> Value {
     if tool_name == "Bash" {
         json!({ "stdout": message, "stderr": "", "interrupted": false, "isImage": false })
+    } else if tool_name == "Read" {
+        json!({ "type": "text", "file": { "filePath": "", "content": message, "numLines": 1, "startLine": 1, "totalLines": 1 } })
     } else {
         json!([{ "type": "text", "text": message }])
     }
@@ -179,5 +198,19 @@ mod tests {
 
         let write = json!({ "hook_event_name": "PreToolUse", "tool_name": "mcp__notion__notion-create-pages" });
         assert_eq!(fail_closed(&write, |_| panic!("boom")), None);
+
+        let read = json!({ "hook_event_name": "PostToolUse", "tool_name": "Read" });
+        let output = fail_closed(&read, |_| panic!("boom")).unwrap();
+        let content = output["hookSpecificOutput"]["updatedToolOutput"]["file"]["content"].as_str().unwrap();
+        assert!(content.contains("output hidden"), "{content}");
+    }
+
+    #[test]
+    fn only_data_files_are_masked_on_read() {
+        let read = |path: &str| json!({ "tool_name": "Read", "tool_input": { "file_path": path } });
+        assert!(reads_data_file(&read("/tmp/export.CSV")));
+        assert!(reads_data_file(&read("logs/production.log")));
+        assert!(!reads_data_file(&read("spec/models/user_spec.rb")));
+        assert!(!reads_data_file(&read("Makefile")));
     }
 }

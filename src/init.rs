@@ -11,9 +11,10 @@ use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
 
 pub const MASK_COMMAND: &str = "ranon hook claude";
-const MASK_MATCHER: &str = "Bash|mcp__.*";
+const MASK_MATCHER: &str = "Bash|Read|mcp__.*";
 /// MCP tools that send text elsewhere: tokens become real values again before the call, with approval.
-const WRITE_MATCHER: &str = "mcp__.*__.*(create|update|send|post|comment|reply|write|edit|add).*";
+const WRITE_MATCHER: &str =
+    "mcp__.*__.*(create|update|send|post|comment|reply|write|edit|add|type|fill|form|select|navigate|computer).*";
 /// Blocks the tools whose output ranon masks while the binary is missing: Claude Code would pass them raw.
 const GUARD_COMMAND: &str =
     "command -v ranon >/dev/null 2>&1 || { echo 'ranon is missing: output would not be masked' >&2; exit 2; }";

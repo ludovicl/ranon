@@ -19,13 +19,13 @@ What ranon can mask depends on what the harness lets a hook do. Only Claude Code
 {
   "hooks": {
     "PostToolUse": [
-      { "matcher": "Bash|mcp__.*",
+      { "matcher": "Bash|Read|mcp__.*",
         "hooks": [{ "type": "command", "command": "ranon hook claude" }] }
     ],
     "PreToolUse": [
-      { "matcher": "mcp__.*__.*(create|update|send|post|comment|reply|write|edit|add).*",
+      { "matcher": "mcp__.*__.*(create|update|send|post|comment|reply|write|edit|add|type|fill|form|select|navigate|computer).*",
         "hooks": [{ "type": "command", "command": "ranon hook claude" }] },
-      { "matcher": "Bash|mcp__.*",
+      { "matcher": "Bash|Read|mcp__.*",
         "hooks": [{ "type": "command", "command": "command -v ranon >/dev/null 2>&1 || { echo 'ranon is missing: output would not be masked' >&2; exit 2; }" }] }
     ]
   }
@@ -34,9 +34,9 @@ What ranon can mask depends on what the harness lets a hook do. Only Claude Code
 
 A hook that already runs `ranon hook` keeps its matcher: to mask fewer MCP servers, narrow it by hand (`Bash|mcp__notion__.*`) and `ranon init` will leave it alone.
 
-For Bash, only the outputs of `psql`, `heroku run`, `heroku logs`, `stripe` and the `commands` of your rules files are masked. For any other matched tool, every string of the response is. If masking fails (unusable state, invalid rules file, unreadable payload, internal error), the output is replaced by an error message (fail closed).
+For Bash, only the outputs of `psql`, `heroku run`, `heroku logs`, `stripe` and the `commands` of your rules files are masked. For Read, only data files (`.csv`, `.tsv`, `.json`, `.jsonl`, `.ndjson`, `.txt`, `.log`, `.xml`, `.html`, `.sql`): masking source code would turn its fixtures into tokens. For any other matched tool, every string of the response is, except screenshots. If masking fails (unusable state, invalid rules file, unreadable payload, internal error), the output is replaced by an error message (fail closed).
 
-**Writing back.** When the model writes to a tool (a Notion comment, a page), its text holds tokens. The `PreToolUse` hook puts the real values back, locally, just before the call, and asks you to approve it since the input changed. Unknown tokens are left as they are.
+**Writing back.** When the model writes to a tool (a Notion comment, a page, a field typed in a browser), its text holds tokens. The `PreToolUse` hook puts the real values back, locally, just before the call, and asks you to approve it since the input changed. Unknown tokens are left as they are.
 
 Two failures are out of ranon's reach, because Claude Code then keeps the raw output: a hook whose binary is missing, and a hook that times out. The third hook covers the first: it blocks Bash and MCP calls while `ranon` is not in `PATH`.
 

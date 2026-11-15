@@ -266,6 +266,31 @@ fn hook_masks_heroku_console_and_mcp_responses() {
     assert_eq!(updated[0]["type"], "text");
 }
 
+fn read(path: &str, content: &str) -> serde_json::Value {
+    serde_json::json!({ "tool_name": "Read", "tool_input": { "file_path": path },
+        "tool_response": { "type": "text", "file": { "filePath": path, "content": content,
+            "numLines": 2, "startLine": 1, "totalLines": 2 } } })
+}
+
+#[test]
+fn hook_masks_data_files_read_but_not_source_code() {
+    let updated = hook(&home(), read("/tmp/export.csv", "first_name,email\nJean,jean@example.com")).unwrap();
+    assert_hidden(&updated.to_string(), &["jean@example.com"]);
+    assert_eq!(updated["file"]["filePath"], "/tmp/export.csv");
+    assert!(hook(&home(), read("spec/user_spec.rb", r#"create(:user, email: "jean@example.com")"#)).is_none());
+}
+
+#[test]
+fn hook_masks_browser_pages_and_leaves_screenshots_alone() {
+    let screenshot = "iVBO+0612345678/FR7630006000011234567890189+AAAA";
+    let page = serde_json::json!({ "tool_name": "mcp__playwright__browser_snapshot", "tool_input": {},
+        "tool_response": [{ "type": "text", "text": "- cell: jean@example.com" },
+            { "type": "image", "data": screenshot, "mimeType": "image/png" }] });
+    let updated = hook(&home(), page).unwrap();
+    assert_hidden(&updated[0]["text"].to_string(), &["jean@example.com"]);
+    assert_eq!(updated[1]["data"], screenshot);
+}
+
 #[test]
 fn hook_fails_closed_when_state_is_unusable() {
     let blocker = home().join("not-a-dir");
