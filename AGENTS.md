@@ -21,6 +21,7 @@ A single Rust binary that masks personal data in command and tool output before 
 | `src/init.rs` | `ranon init`: wires Claude Code, OpenCode or Codex in one command, keeping existing settings; `--dry-run`, `--show`, `--uninstall` |
 | `src/doctor.rs` | `ranon doctor`: checks binary, rules, state, dictionary and Claude Code hooks |
 | `tests/cli.rs` | Integration tests running the real binary with an isolated `RANON_HOME` and `RANON_CONFIG_DIR` |
+| `tests/harnesses.rs` | One test per agent: Claude Code hook payloads captured from a real session (`tests/fixtures/claude-code/`, synthetic data, ids and paths replaced), and a fake `psql` run through the config `ranon init` writes for Codex and OpenCode (the plugin runs under Node) |
 
 ## Invariants (do not break)
 

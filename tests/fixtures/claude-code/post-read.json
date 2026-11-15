@@ -1,0 +1,28 @@
+{
+  "session_id": "00000000-0000-0000-0000-000000000000",
+  "transcript_path": "/home/dev/.claude/projects/project/session.jsonl",
+  "cwd": "/home/dev/project",
+  "scratchpad_dir": "/tmp/scratchpad",
+  "prompt_id": "00000000-0000-0000-0000-000000000001",
+  "permission_mode": "auto",
+  "effort": {
+    "level": "medium"
+  },
+  "hook_event_name": "PostToolUse",
+  "tool_name": "Read",
+  "tool_input": {
+    "file_path": "/tmp/scratchpad/export.csv"
+  },
+  "tool_response": {
+    "type": "text",
+    "file": {
+      "filePath": "/tmp/scratchpad/export.csv",
+      "content": "id,first_name,last_name,email,note\n1,Jean,Dupont,jean.dupont@example.com,ranon-fixture\n",
+      "numLines": 3,
+      "startLine": 1,
+      "totalLines": 3
+    }
+  },
+  "tool_use_id": "toolu_fixture",
+  "duration_ms": 4
+}

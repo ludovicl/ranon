@@ -1,0 +1,26 @@
+{
+  "session_id": "00000000-0000-0000-0000-000000000000",
+  "transcript_path": "/home/dev/.claude/projects/project/session.jsonl",
+  "cwd": "/home/dev/project",
+  "scratchpad_dir": "/tmp/scratchpad",
+  "prompt_id": "00000000-0000-0000-0000-000000000001",
+  "permission_mode": "auto",
+  "effort": {
+    "level": "medium"
+  },
+  "hook_event_name": "PostToolUse",
+  "tool_name": "Bash",
+  "tool_input": {
+    "command": "psql -c 'select email from users'",
+    "description": "Emit a synthetic marked output"
+  },
+  "tool_response": {
+    "stdout": "ranon-fixture email: jean.dupont@example.com",
+    "stderr": "",
+    "interrupted": false,
+    "isImage": false,
+    "noOutputExpected": false
+  },
+  "tool_use_id": "toolu_fixture",
+  "duration_ms": 94
+}

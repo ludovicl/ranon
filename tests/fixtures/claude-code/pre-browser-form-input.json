@@ -1,0 +1,24 @@
+{
+  "session_id": "00000000-0000-0000-0000-000000000000",
+  "transcript_path": "/home/dev/.claude/projects/project/session.jsonl",
+  "cwd": "/home/dev/project",
+  "scratchpad_dir": "/tmp/scratchpad",
+  "prompt_id": "00000000-0000-0000-0000-000000000001",
+  "permission_mode": "auto",
+  "effort": {
+    "level": "medium"
+  },
+  "hook_event_name": "PreToolUse",
+  "tool_name": "mcp__Claude_Browser__form_input",
+  "tool_input": {
+    "ref": "ref_5",
+    "value": "ranon-fixture PERSON_d26f1d",
+    "tabId": "tab-3",
+    "action_summary": "Types a synthetic test value into the local test page field"
+  },
+  "tool_use_id": "toolu_fixture",
+  "mcp_server": {
+    "name": "Claude Browser",
+    "source": "sdk"
+  }
+}

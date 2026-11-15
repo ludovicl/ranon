@@ -1,0 +1,53 @@
+{
+  "session_id": "00000000-0000-0000-0000-000000000000",
+  "transcript_path": "/home/dev/.claude/projects/project/session.jsonl",
+  "cwd": "/home/dev/project",
+  "scratchpad_dir": "/tmp/scratchpad",
+  "prompt_id": "00000000-0000-0000-0000-000000000001",
+  "permission_mode": "auto",
+  "effort": {
+    "level": "medium"
+  },
+  "hook_event_name": "PostToolUse",
+  "tool_name": "mcp__Claude_Browser__browser_batch",
+  "tool_input": {
+    "actions": [
+      {
+        "name": "navigate",
+        "input": {
+          "url": "http://localhost:8765/page.html"
+        }
+      },
+      {
+        "name": "get_page_text",
+        "input": {}
+      },
+      {
+        "name": "find",
+        "input": {
+          "query": "textbox"
+        }
+      }
+    ]
+  },
+  "tool_response": [
+    {
+      "type": "text",
+      "text": "[navigate] navigated to http://localhost:8765/page.html\nTab tab-1 shows a local file and cannot navigate, so this call used new tab tab-3 instead (now the active tab; pass tabId \"tab-3\" to keep using it).\n\n\nTab Context:\n- Executed on tabId: tab-3\n- Available tabs:\n  • tabId tab-3: \"http://localhost:8765/page.html\" (\"http://localhost:8765/page.html\")"
+    },
+    {
+      "type": "text",
+      "text": "[get_page_text] Title: \nURL: http://localhost:8765/page.html\nSource element: <body>\n---\nranon-fixture\n\nJean Dupont\tjean.dupont@example.com\n\n\nTab Context:\n- Executed on tabId: tab-3\n- Available tabs:\n  • tabId tab-3: \"http://localhost:8765/page.html\" (\"http://localhost:8765/page.html\")"
+    },
+    {
+      "type": "text",
+      "text": "[find] Found 1 match(es) for \"textbox\":\n- textbox [ref_5]\n\n\nTab Context:\n- Executed on tabId: tab-3\n- Available tabs:\n  • tabId tab-3: \"http://localhost:8765/page.html\" (\"http://localhost:8765/page.html\")"
+    }
+  ],
+  "tool_use_id": "toolu_fixture",
+  "duration_ms": 897,
+  "mcp_server": {
+    "name": "Claude Browser",
+    "source": "sdk"
+  }
+}
