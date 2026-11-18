@@ -6,7 +6,7 @@ use regex::Regex;
 use serde_json::{Value, json};
 use std::io::{Read, Write};
 use std::panic::{UnwindSafe, catch_unwind};
-use std::sync::OnceLock;
+use std::sync::{Mutex, OnceLock};
 
 fn psql_tuples_only(command: &str) -> bool {
     static PSQL: OnceLock<Regex> = OnceLock::new();
@@ -151,15 +151,49 @@ fn respond(payload: &Value) -> Option<Value> {
     }
 }
 
+static LAST_PANIC: Mutex<Option<String>> = Mutex::new(None);
+
+/// Replaces the default panic hook, which prints the whole panic message to stderr: a message such as
+/// "byte index 96 is not a char boundary; it is inside 'é' of `…`" quotes the text being masked.
+/// Keeps only the kind of panic and where it happened, for `internal_error`.
+pub(crate) fn record_panics() {
+    std::panic::set_hook(Box::new(|info| {
+        let payload = info.payload();
+        let message =
+            payload.downcast_ref::<&str>().copied().or_else(|| payload.downcast_ref::<String>().map(String::as_str));
+        let kind = panic_kind(message.unwrap_or_default());
+        let at = info.location().map(|at| format!(" at {}:{}", at.file(), at.line())).unwrap_or_default();
+        if let Ok(mut last) = LAST_PANIC.lock() {
+            *last = Some(format!("{kind}{at}"));
+        }
+    }));
+}
+
+/// The start of a panic message, cut before anything it may quote (`…`, '…', "…", a value after `:`).
+fn panic_kind(message: &str) -> String {
+    let kind = message.split([';', ':', '`', '\'', '"', '\n']).next().unwrap_or_default().trim();
+    let kind: String = kind.chars().take(80).collect();
+    if kind.is_empty() { "panic".to_string() } else { kind }
+}
+
+/// The error shown in place of the output after a panic: its kind and location, never its content.
+pub(crate) fn internal_error() -> String {
+    match LAST_PANIC.lock().ok().and_then(|mut last| last.take()) {
+        Some(panic) => format!("internal error: {panic}"),
+        None => "internal error".to_string(),
+    }
+}
+
 /// Runs `respond`, and hides the tool output if it panics: a crashed hook would let the raw output through.
 fn fail_closed(payload: &Value, respond: impl FnOnce(&Value) -> Option<Value> + UnwindSafe) -> Option<Value> {
     catch_unwind(|| respond(payload)).unwrap_or_else(|_| {
         let masking = payload["hook_event_name"] != "PreToolUse";
-        masking.then(|| hidden(payload["tool_name"].as_str().unwrap_or_default(), "internal error"))
+        masking.then(|| hidden(payload["tool_name"].as_str().unwrap_or_default(), &internal_error()))
     })
 }
 
 pub fn claude() -> i32 {
+    record_panics();
     let mut raw = Vec::new();
     let read = std::io::stdin().read_to_end(&mut raw);
     let input = String::from_utf8_lossy(&raw);
@@ -203,6 +237,16 @@ mod tests {
         let output = fail_closed(&read, |_| panic!("boom")).unwrap();
         let content = output["hookSpecificOutput"]["updatedToolOutput"]["file"]["content"].as_str().unwrap();
         assert!(content.contains("output hidden"), "{content}");
+    }
+
+    #[test]
+    fn panic_kind_keeps_no_quoted_text() {
+        let slicing = "byte index 96 is not a char boundary; it is inside 'é' (bytes 95..97) of `Jean Dupont é`";
+        assert_eq!(panic_kind(slicing), "byte index 96 is not a char boundary");
+        let unwrap = "called `Result::unwrap()` on an `Err` value: \"jean@example.com\"";
+        assert_eq!(panic_kind(unwrap), "called");
+        assert_eq!(panic_kind("index out of bounds: the len is 3 but the index is 5"), "index out of bounds");
+        assert_eq!(panic_kind("`Jean Dupont`"), "panic");
     }
 
     #[test]

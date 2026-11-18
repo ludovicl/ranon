@@ -34,7 +34,7 @@ What ranon can mask depends on what the harness lets a hook do. Claude Code lets
 
 A hook that already runs `ranon hook` keeps its matcher: to mask fewer MCP servers, narrow it by hand (`Bash|mcp__notion__.*`) and `ranon init` will leave it alone.
 
-For Bash, only the outputs of `psql`, `heroku run`, `heroku logs`, `stripe` and the `commands` of your rules files are masked. For Read, only data files (`.csv`, `.tsv`, `.json`, `.jsonl`, `.ndjson`, `.txt`, `.log`, `.xml`, `.html`, `.sql`): masking source code would turn its fixtures into tokens. For any other matched tool, every string of the response is, except screenshots. If masking fails (unusable state, invalid rules file, unreadable payload, internal error), the output is replaced by an error message (fail closed).
+For Bash, only the outputs of `psql`, `heroku run`, `heroku logs`, `stripe` and the `commands` of your rules files are masked. For Read, only data files (`.csv`, `.tsv`, `.json`, `.jsonl`, `.ndjson`, `.txt`, `.log`, `.xml`, `.html`, `.sql`): masking source code would turn its fixtures into tokens. For any other matched tool, every string of the response is, except screenshots. If masking fails (unusable state, invalid rules file, unreadable payload, internal error), the output is replaced by an error message (fail closed). After an internal error, the message gives its kind and place in ranon's code (`byte index 96 is not a char boundary at src/mask.rs:52`), never the text it quotes.
 
 **Writing back.** When the model writes to a tool (a Notion comment, a page, a field typed in a browser), its text holds tokens. The `PreToolUse` hook puts the real values back, locally, just before the call, and asks you to approve it since the input changed. Unknown tokens are left as they are.
 

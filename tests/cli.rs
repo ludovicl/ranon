@@ -563,6 +563,20 @@ fn slack_user_columns_and_objects_are_masked() {
 }
 
 #[test]
+fn slack_search_with_lines_ending_in_accented_characters_is_masked() {
+    // a message line ending in `€` or `é` used to panic the JSON pass, which hid the whole search
+    let csv = "MsgID,UserID,UserName,RealName,Channel,ThreadTs,Text,Time,Permalink,Reactions,BotName,FileCount,AttachmentIDs,HasMedia,Cursor\n\
+        1700000000.000100,U1,jean.dupont,Jean Dupont,#support,1700000000.000100,\"Remboursement de 12 €\nCM validé\",2026-09-02T10:00:00Z,https://example.slack.com/archives/C1/p1700000000000100,,,0,,false,\n\
+        1700000001.000200,U2,zoe.xyz,Zoe Xyz,#ops,,\"ok pour la CM 👍\",2026-09-03T10:00:00Z,https://example.slack.com/archives/C2/p1700000001000200,+1:1,,0,,false,bmV4dA==\n";
+    let payload = serde_json::json!({ "hook_event_name": "PostToolUse", "tool_name": "mcp__slack__conversations_search_messages",
+        "tool_input": { "search_query": "CM", "limit": 15 }, "tool_response": [{ "type": "text", "text": csv }] });
+    let out = hook(&home(), payload).unwrap().to_string();
+    assert!(!out.contains("masking failed"), "{out}");
+    assert_hidden(&out, &["jean.dupont", "Jean Dupont", "zoe.xyz", "Zoe Xyz"]);
+    assert!(out.contains("12 €") && out.contains("CM validé") && out.contains("👍"), "{out}");
+}
+
+#[test]
 fn json_after_a_banner_and_json_lines_are_masked_by_key_path() {
     let banner =
         "Running rails runner on app... up, run.1234\n{\"customer\":{\"name\":\"Zoe Xyz\",\"plan\":\"pro\"}}\n";

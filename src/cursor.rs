@@ -87,6 +87,7 @@ fn respond(payload: &Value) -> Result<Value, String> {
 
 /// Exit 2 makes Cursor block the call: used when the payload or the state cannot be handled.
 pub fn run() -> i32 {
+    crate::hook::record_panics();
     let mut raw = String::new();
     let payload = std::io::stdin()
         .read_to_string(&mut raw)
@@ -103,7 +104,7 @@ pub fn run() -> i32 {
             return 0;
         }
         Ok(Err(error)) => error,
-        Err(_) => "internal error".to_string(),
+        Err(_) => crate::hook::internal_error(),
     };
     if payload["hook_event_name"] == "postToolUse" {
         // the tool has already run: hide its output rather than block what can no longer be blocked

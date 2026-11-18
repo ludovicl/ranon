@@ -48,7 +48,8 @@ impl Masker {
             let line_end = rest.find('\n').map_or(rest.len(), |newline| newline + 1);
             let indent = rest.len() - rest.trim_start_matches([' ', '\t']).len();
             // also a document opened at the end of a line: `#<Treezor::User id=1> JSON: {`
-            let opened = rest[..line_end].trim_end().len().saturating_sub(1);
+            // start of the last character, which may span several bytes (`é`, an emoji)
+            let opened = rest[..line_end].trim_end().char_indices().next_back().map_or(0, |(at, _)| at);
             let found = [indent, opened].into_iter().find_map(|at| Some((at, leading_json(&rest[at..])?)));
             let Some((indent, (mut value, len))) = found else {
                 out.push_str(&rest[..line_end]);
