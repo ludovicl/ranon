@@ -35,7 +35,7 @@ ok    Claude Code hook in .claude/settings.json: masks Bash|mcp__notion__.*
 ok    hook activity: 42 outputs masked (318 values), 1 hidden
 ```
 
-It exits with 1 when a check fails. Run it from the project whose `.claude/settings.json` holds the hooks.
+It exits with 1 when a check fails. A crash of the hook in the last 7 days is a warning with the place in ranon's code where it happened (`src/mask.rs:52`): the outputs it hid were replaced by an error, so update ranon or report that location. Run it from the project whose `.claude/settings.json` holds the hooks.
 
 ## Let your agent set it up
 

@@ -47,13 +47,23 @@ pub(crate) fn walk(value: &mut Value, masker: &mut Masker) -> bool {
 
 /// One line per masked or hidden output in `hook.log`: time, tool, outcome, number of values. No content.
 pub(crate) fn log(tool_name: &str, outcome: &str, values: usize) {
+    write_log(&format!("{tool_name}\t{outcome}\t{values}"));
+}
+
+/// A `panic` line in `hook.log`, with where it happened in ranon's code (`src/mask.rs:52`), never its message:
+/// `ranon doctor` reports it so that a crash hiding outputs every day does not go unnoticed.
+fn log_panic(tool_name: &str, location: &str) {
+    write_log(&format!("{tool_name}\tpanic\t0\t{location}"));
+}
+
+fn write_log(line: &str) {
     if cfg!(test) {
         // unit tests run without RANON_HOME and must not write to the user's state directory
         return;
     }
     let path = crate::store::state_dir().join("hook.log");
     if let Ok(mut file) = crate::store::private_file(&path, true) {
-        writeln!(file, "{}\t{tool_name}\t{outcome}\t{values}", crate::store::now()).ok();
+        writeln!(file, "{}\t{line}", crate::store::now()).ok();
     }
 }
 
@@ -132,6 +142,10 @@ fn post_tool_output(updated: Value) -> Value {
 /// The tool output replaced by a message, when it cannot be masked.
 fn hidden(tool_name: &str, error: &str) -> Value {
     log(tool_name, "hidden", 0);
+    hidden_unlogged(tool_name, error)
+}
+
+fn hidden_unlogged(tool_name: &str, error: &str) -> Value {
     post_tool_output(hidden_output(tool_name, format!("[ranon: masking failed ({error}), output hidden]")))
 }
 
@@ -151,20 +165,25 @@ fn respond(payload: &Value) -> Option<Value> {
     }
 }
 
-static LAST_PANIC: Mutex<Option<String>> = Mutex::new(None);
+struct Panic {
+    kind: String,
+    location: String,
+}
+
+static LAST_PANIC: Mutex<Option<Panic>> = Mutex::new(None);
 
 /// Replaces the default panic hook, which prints the whole panic message to stderr: a message such as
 /// "byte index 96 is not a char boundary; it is inside 'é' of `…`" quotes the text being masked.
-/// Keeps only the kind of panic and where it happened, for `internal_error`.
+/// Keeps only the kind of panic and where it happened, for `report_panic`.
 pub(crate) fn record_panics() {
     std::panic::set_hook(Box::new(|info| {
         let payload = info.payload();
         let message =
             payload.downcast_ref::<&str>().copied().or_else(|| payload.downcast_ref::<String>().map(String::as_str));
         let kind = panic_kind(message.unwrap_or_default());
-        let at = info.location().map(|at| format!(" at {}:{}", at.file(), at.line())).unwrap_or_default();
+        let location = info.location().map(|at| format!("{}:{}", at.file(), at.line())).unwrap_or_default();
         if let Ok(mut last) = LAST_PANIC.lock() {
-            *last = Some(format!("{kind}{at}"));
+            *last = Some(Panic { kind, location });
         }
     }));
 }
@@ -176,10 +195,13 @@ fn panic_kind(message: &str) -> String {
     if kind.is_empty() { "panic".to_string() } else { kind }
 }
 
-/// The error shown in place of the output after a panic: its kind and location, never its content.
-pub(crate) fn internal_error() -> String {
-    match LAST_PANIC.lock().ok().and_then(|mut last| last.take()) {
-        Some(panic) => format!("internal error: {panic}"),
+/// After a panic: logs it and returns the error to show in place of the output, its kind and location only.
+pub(crate) fn report_panic(tool_name: &str) -> String {
+    let panic = LAST_PANIC.lock().ok().and_then(|mut last| last.take());
+    log_panic(tool_name, panic.as_ref().map_or("", |panic| panic.location.as_str()));
+    match panic {
+        Some(Panic { kind, location }) if !location.is_empty() => format!("internal error: {kind} at {location}"),
+        Some(Panic { kind, .. }) => format!("internal error: {kind}"),
         None => "internal error".to_string(),
     }
 }
@@ -187,8 +209,10 @@ pub(crate) fn internal_error() -> String {
 /// Runs `respond`, and hides the tool output if it panics: a crashed hook would let the raw output through.
 fn fail_closed(payload: &Value, respond: impl FnOnce(&Value) -> Option<Value> + UnwindSafe) -> Option<Value> {
     catch_unwind(|| respond(payload)).unwrap_or_else(|_| {
+        let tool_name = payload["tool_name"].as_str().unwrap_or_default();
+        let error = report_panic(tool_name);
         let masking = payload["hook_event_name"] != "PreToolUse";
-        masking.then(|| hidden(payload["tool_name"].as_str().unwrap_or_default(), &internal_error()))
+        masking.then(|| hidden_unlogged(tool_name, &error))
     })
 }
 

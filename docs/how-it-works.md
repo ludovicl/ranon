@@ -86,7 +86,7 @@ flowchart LR
 | `salt` | 32 random bytes, hex |
 | `map.tsv` | token → real value, with the time it was first masked |
 | `names.bin` | sorted salted hashes of name words |
-| `hook.log` | one line per output the hook masked or hid: time, tool, outcome, number of values. No content |
+| `hook.log` | one line per output the hook masked, hid or could not mask after a crash: time, tool, outcome, number of values, and for a crash the place in ranon's code (`src/mask.rs:52`). No content |
 
 **Never share or commit these files.** Anyone with `salt` and `map.tsv` can unmask everything.
 

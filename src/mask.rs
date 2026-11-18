@@ -387,3 +387,86 @@ fn join_cells(cells: &[String], sep: char) -> String {
     writer.write_record(cells).ok();
     String::from_utf8(writer.into_inner().unwrap_or_default()).unwrap_or_default().trim_end().to_string()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::panic::{AssertUnwindSafe, catch_unwind};
+
+    /// Pieces of the outputs ranon sees (tables, CSV, JSON, inspects, YAML, values), mixed with characters
+    /// that take several bytes or change line handling: a position computed in bytes breaks on them.
+    const PIECES: &[&str] = &[
+        "é",
+        "€",
+        "👍",
+        "ß",
+        "日本",
+        "\u{200b}",
+        "\u{301}",
+        "\t",
+        " ",
+        "\n",
+        "\r\n",
+        "{",
+        "}",
+        "[",
+        "]",
+        "\"",
+        "'",
+        ",",
+        "|",
+        ":",
+        "=",
+        "-",
+        "+",
+        "\\",
+        "email",
+        "first_name",
+        "Jean Dupont",
+        "jean@example.com",
+        "FR7630006000011234567890189",
+        "+33 6 12 34 56 78",
+        " id | name\n----+------\n",
+        "name,email\n",
+        "MsgID,UserID,UserName,RealName,Text\n",
+        "JSON: {",
+        "#<User ",
+        "first_name: ",
+        "\"\"email\"\": \"\"",
+        "{\"name\":\"",
+        "\"}",
+        "null",
+        "1.5",
+        "-[ RECORD 1 ]-",
+        "(1 row)",
+        "Zoé",
+        "Ünïcödé",
+        "PERSON_d86896",
+    ];
+
+    /// xorshift: reproducible texts without a dependency, the seed of a failure is enough to replay it.
+    fn random_text(seed: u64) -> String {
+        let mut state = seed.wrapping_mul(0x9E37_79B9_7F4A_7C15) | 1;
+        let mut next = || {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            state
+        };
+        let len = 1 + next() % 40;
+        (0..len).map(|_| PIECES[(next() % PIECES.len() as u64) as usize]).collect()
+    }
+
+    #[test]
+    fn masking_never_panics_on_mixed_text() {
+        let store = crate::store::temporary_store("fuzz");
+        Names::build(&store, ["Jean Dupont", "Zoé Xyz"].into_iter(), true).unwrap();
+        let names = Names::load(&store);
+        let mut masker = Masker { store, names };
+        for seed in 0..20_000 {
+            let text = random_text(seed);
+            let masked = catch_unwind(AssertUnwindSafe(|| masker.mask_text(&text)));
+            assert!(masked.is_ok(), "masking panicked on seed {seed}: {text:?}");
+        }
+    }
+}

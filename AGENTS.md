@@ -32,7 +32,7 @@ A single Rust binary that masks personal data in command and tool output before 
 - **State files are private** (`salt`, `map.tsv`, `names.bin`, mode 600 in a 700 directory) and never committed.
 - **Token format is stable**: `KIND_` + 6 lowercase hex characters, `KIND` in uppercase letters. `is_token` and unmasking depend on it, and existing token maps must keep working.
 - **One token, one value.** `Store::token` rehashes a value whose token is already taken; never overwrite or reuse an entry of the map.
-- **Nothing personal in `hook.log`**: tool name, outcome and counts only, never a command or a value.
+- **Nothing personal in `hook.log`**: tool name, outcome, counts and, for a panic, its location in ranon's code; never a command, a value or a panic message (it may quote the text being masked).
 - **Masking is idempotent**: a token is never masked again.
 - **Organization-specific rules stay out of the code.** A rule belongs in `builtin.rs` only if it is useful to anyone using that kind of source (Stripe, Notion, SEPA…). Company field names go in the user's `rules.d/` files.
 
@@ -51,7 +51,7 @@ cargo clippy --all-targets -- -D warnings
 cargo test
 ```
 
-CI runs the same three on Linux and macOS. A change to masking logic should come with a test that fails without it.
+CI runs the same three on Linux and macOS. A change to masking logic should come with a test that fails without it. `masking_never_panics_on_mixed_text` (`src/mask.rs`) feeds 20 000 reproducible texts mixing output formats and multi-byte characters through every pass: a new format goes into its `PIECES`, and a failure prints the seed and text to replay.
 
 ## Commits
 

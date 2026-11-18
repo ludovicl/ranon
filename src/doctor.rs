@@ -127,12 +127,30 @@ fn claude_hooks() -> Vec<Check> {
 /// What the hook did so far, from `hook.log`.
 fn activity() -> Check {
     let log = std::fs::read_to_string(state_dir().join("hook.log")).unwrap_or_default();
-    let count = |outcome: &str| log.lines().filter(|line| line.split('\t').nth(2) == Some(outcome)).count();
-    let values: usize = log.lines().filter_map(|line| line.split('\t').nth(3)?.parse::<usize>().ok()).sum();
-    Check::Ok(format!(
-        "hook activity: {} outputs masked ({values} values), {} hidden",
-        count("masked"),
-        count("hidden")
+    summarize_activity(&log, crate::store::now())
+}
+
+/// A crash in the last week is a warning: it hides outputs until ranon is fixed, and nothing else shows it.
+fn summarize_activity(log: &str, now: u64) -> Check {
+    const WEEK: u64 = 7 * 24 * 3600;
+    let fields: Vec<Vec<&str>> = log.lines().map(|line| line.split('\t').collect()).collect();
+    let count = |outcome: &str| fields.iter().filter(|line| line.get(2) == Some(&outcome)).count();
+    let values: usize = fields.iter().filter_map(|line| line.get(3)?.parse::<usize>().ok()).sum();
+    let summary =
+        format!("hook activity: {} outputs masked ({values} values), {} hidden", count("masked"), count("hidden"));
+    let recent: Vec<&Vec<&str>> = fields
+        .iter()
+        .filter(|line| line.get(2) == Some(&"panic"))
+        .filter(|line| line[0].parse::<u64>().is_ok_and(|time| now.saturating_sub(time) < WEEK))
+        .collect();
+    let Some(last) = recent.last() else {
+        return Check::Ok(summary);
+    };
+    let location = last.get(4).copied().filter(|location| !location.is_empty()).unwrap_or("unknown location");
+    Check::Warn(format!(
+        "{summary}; {} crashed in the last 7 days, each output hidden (last: {} at {location}): update ranon or report the location",
+        recent.len(),
+        last[1]
     ))
 }
 
@@ -174,5 +192,21 @@ mod tests {
         ] } });
         assert_eq!(hook_matchers(&settings, "PostToolUse"), ["Bash|mcp__slack__.*", "*"]);
         assert!(hook_matchers(&settings, "PreToolUse").is_empty());
+    }
+
+    #[test]
+    fn recent_crashes_are_a_warning() {
+        let now = 1_000_000_000;
+        let log = format!(
+            "{old}\tBash\tpanic\t0\tsrc/old.rs:1\n{recent}\tBash\tmasked\t3\n{recent}\tmcp__slack__conversations_search_messages\tpanic\t0\tsrc/mask.rs:52\n",
+            old = now - 8 * 24 * 3600,
+            recent = now - 60
+        );
+        let Check::Warn(message) = summarize_activity(&log, now) else { panic!("a recent crash should warn") };
+        assert!(message.contains("1 crashed in the last 7 days"), "{message}");
+        assert!(message.contains("mcp__slack__conversations_search_messages at src/mask.rs:52"), "{message}");
+
+        let old_only = format!("{}\tBash\tpanic\t0\tsrc/old.rs:1\n", now - 8 * 24 * 3600);
+        assert!(matches!(summarize_activity(&old_only, now), Check::Ok(_)));
     }
 }

@@ -98,17 +98,20 @@ pub fn run() -> i32 {
         eprintln!("ranon: unreadable hook payload, call blocked");
         return 2;
     };
-    let error = match catch_unwind(|| respond(&payload)) {
+    let (error, panicked) = match catch_unwind(|| respond(&payload)) {
         Ok(Ok(output)) => {
             println!("{output}");
             return 0;
         }
-        Ok(Err(error)) => error,
-        Err(_) => crate::hook::internal_error(),
+        Ok(Err(error)) => (error, false),
+        // logged as a `panic` line, in place of `hidden`
+        Err(_) => (crate::hook::report_panic("cursor"), true),
     };
     if payload["hook_event_name"] == "postToolUse" {
         // the tool has already run: hide its output rather than block what can no longer be blocked
-        log("cursor-mcp", "hidden", 0);
+        if !panicked {
+            log("cursor-mcp", "hidden", 0);
+        }
         println!("{}", json!({ "updated_mcp_tool_output": hidden(&error) }));
         return 0;
     }

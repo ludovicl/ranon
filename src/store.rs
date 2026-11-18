@@ -189,6 +189,20 @@ pub fn private_file(path: &Path, append: bool) -> io::Result<fs::File> {
     options.open(path)
 }
 
+/// An empty store in its own temporary directory, for tests elsewhere in the crate.
+#[cfg(test)]
+pub(crate) fn temporary_store(name: &str) -> Store {
+    let dir = std::env::temp_dir().join(format!("ranon-{name}-{}", std::process::id()));
+    fs::create_dir_all(&dir).unwrap();
+    Store {
+        dir,
+        salt: b"0123456789abcdef0123456789abcdef".to_vec(),
+        mapping: HashMap::new(),
+        new_tokens: Vec::new(),
+        issued: 0,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
