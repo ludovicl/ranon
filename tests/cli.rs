@@ -563,6 +563,21 @@ fn slack_user_columns_and_objects_are_masked() {
 }
 
 #[test]
+fn names_masked_in_a_column_are_masked_in_free_text_later() {
+    // no dictionary yet: the Slack author is learned from the RealName column
+    let home = home();
+    let out = mask(&home, "MsgID,UserName,RealName,Text\n1,zoe.xyz,Zoé Xyz,\"Je relance Ana Abc\"\n");
+    assert_hidden(&out, &["Zoé Xyz", "zoe.xyz"]);
+    assert!(out.contains("Ana Abc"), "a name never seen in a column is not known: {out}");
+
+    let out = mask(&home, "Vu avec Zoé Xyz, on attend. Zoé confirme.\n");
+    assert_hidden(&out, &["Xyz"]);
+    assert!(out.starts_with("Vu avec PERSON_") && out.contains("Zoé confirme"), "a first name alone stays: {out}");
+    let mode = std::fs::metadata(home.join("names.bin")).unwrap().permissions().mode() & 0o777;
+    assert_eq!(mode, 0o600);
+}
+
+#[test]
 fn slack_search_with_lines_ending_in_accented_characters_is_masked() {
     // a message line ending in `€` or `é` used to panic the JSON pass, which hid the whole search
     let csv = "MsgID,UserID,UserName,RealName,Channel,ThreadTs,Text,Time,Permalink,Reactions,BotName,FileCount,AttachmentIDs,HasMedia,Cursor\n\

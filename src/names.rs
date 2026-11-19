@@ -60,20 +60,50 @@ impl Names {
             (false, Some(existing)) => existing.hashes.into_iter().collect(),
             _ => HashSet::new(),
         };
-        for line in lines {
-            for word in word_regex().find_iter(line) {
-                let normalized = normalize(word.as_str());
-                if indexable(&normalized) {
-                    hashes.insert(key(store, &normalized));
-                }
+        hashes.extend(lines.flat_map(|line| word_keys(store, line)));
+        write(store, hashes)
+    }
+
+    /// Adds the words of a name masked in a column (a Slack author, a `first_name`), so that the same name is
+    /// masked where free text quotes it. Returns whether a word was new.
+    pub fn learn(&mut self, store: &Store, name: &str) -> bool {
+        let mut learned = false;
+        for key in word_keys(store, name) {
+            if let Err(at) = self.hashes.binary_search(&key) {
+                self.hashes.insert(at, key);
+                learned = true;
             }
         }
-        let mut sorted: Vec<u64> = hashes.into_iter().collect();
-        sorted.sort_unstable();
-        let bytes: Vec<u8> = sorted.iter().flat_map(|h| h.to_le_bytes()).collect();
-        private_file(&store.path("names.bin"), false)?.write_all(&bytes)?;
-        Ok(sorted.len())
+        learned
     }
+
+    /// Writes the dictionary, merged with what another run may have added meanwhile.
+    pub fn save(&self, store: &Store) -> io::Result<usize> {
+        let mut hashes: HashSet<u64> =
+            Self::load(store).map(|existing| existing.hashes).unwrap_or_default().into_iter().collect();
+        hashes.extend(&self.hashes);
+        write(store, hashes)
+    }
+
+    pub fn empty() -> Self {
+        Self { hashes: Vec::new() }
+    }
+}
+
+fn word_keys<'a>(store: &'a Store, line: &'a str) -> impl Iterator<Item = u64> + 'a {
+    word_regex()
+        .find_iter(line)
+        .map(|word| normalize(word.as_str()))
+        .filter(|normalized| indexable(normalized))
+        .map(|normalized| key(store, &normalized))
+}
+
+fn write(store: &Store, hashes: HashSet<u64>) -> io::Result<usize> {
+    let mut sorted: Vec<u64> = hashes.into_iter().collect();
+    sorted.sort_unstable();
+    let bytes: Vec<u8> = sorted.iter().flat_map(|h| h.to_le_bytes()).collect();
+    private_file(&store.path("names.bin"), false)?.write_all(&bytes)?;
+    Ok(sorted.len())
 }
 
 #[cfg(test)]

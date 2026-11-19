@@ -35,7 +35,7 @@ Restart your agent. That's it: when it runs `psql`, `heroku run` or an MCP tool,
 | Stripe CLI, Notion, Slack, Metabase MCP tools | The same, in JSON: a customer's `name` is masked, a product's `name` is not |
 | `heroku logs` | Emails and IP addresses in request parameters |
 | Data files read by the agent (`.csv`, `.json`, `.log`…), browser pages | The same; source code and screenshots are left as they are |
-| Free text (messages, tickets, comments) | Full names of the people in your users table, from a hashed [name dictionary](docs/getting-started.md#name-dictionary-optional) |
+| Free text (messages, tickets, comments) | Full names of the people in your users table, from a hashed [name dictionary](docs/getting-started.md#name-dictionary-optional), and of the people ranon has already masked in a column (a Slack author) |
 
 Same value, same token: the model can still join, count and compare. Every masked command and field: **[Rules](docs/rules.md)**
 

@@ -49,7 +49,7 @@ A name is masked in one of two ways, depending on where it shows up.
 
 **In free text** (a chat message, a ticket body, a comment) there is no field name, so ranon uses a dictionary built from your own data:
 
-1. `ranon dict build` reads the first and last names of your users table. Each word is lowercased, stripped of its accents and hashed with the local salt; only the hash is written to `names.bin`. The names are never printed, so the agent that runs the command does not see them.
+1. `ranon dict build` reads the first and last names of your users table. Each word is lowercased, stripped of its accents and hashed with the local salt; only the hash is written to `names.bin`. The names are never printed, so the agent that runs the command does not see them. ranon also adds the words of every name it masks in a column (a Slack author in `RealName`, a `first_name`, a Stripe customer's `name`), even without `dict build`: a colleague who wrote a message is then masked where another message quotes their full name, in the same output or a later one.
 2. For each capitalized word of the text, ranon computes the same hash and looks it up.
 3. A word found in the dictionary is masked only next to another dictionary word (`Jean Dupont`, `DUPONT Marie-Anne`) or after a title (`M. Dupont`), including across a record separator (`Jean | Dupont`).
 
@@ -57,7 +57,7 @@ The dictionary does not try to know every surname in the world, only the names o
 
 What follows from this design:
 
-- Someone outside the source table (a colleague, a contact at a supplier) is not recognized in free text, unless a user shares the name.
+- Someone outside the source table (a colleague, a contact at a supplier) is not recognized in free text until ranon has masked their name in a column, unless a user shares the name.
 - A lone first name or surname, and a name written in lowercase, stay readable in free text.
 - The dictionary is a snapshot. A user created after the last `ranon dict build` with a name nobody else has is missing until you rebuild it; schedule the command (weekly is enough) if your data moves.
 - In free text every word gets its own token (`PERSON_aaaaaa PERSON_bbbbbb`), while a `full_name` column gets one token for the whole value: the same person can bear both.

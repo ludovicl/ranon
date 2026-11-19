@@ -19,7 +19,7 @@ cut -d, -f2,3 people.csv | ranon dict build --stdin
 ranon dict stats
 ```
 
-Names go straight from `psql` into the hasher; they are never printed. `--db-url-env` reads the URL from another variable, `--replace` starts from an empty dictionary.
+Names go straight from `psql` into the hasher; they are never printed. `--db-url-env` reads the URL from another variable, `--replace` starts from an empty dictionary. Without a dictionary, ranon still learns the names it masks in columns (a Slack author, a `first_name`) and masks them in free text afterwards.
 
 ## Check the setup
 

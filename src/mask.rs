@@ -12,6 +12,8 @@ use std::sync::OnceLock;
 pub struct Masker {
     pub store: Store,
     names: Option<Names>,
+    /// Words of names masked in columns, added to `names` and saved with the token map.
+    learned: bool,
 }
 
 fn re(cell: &'static OnceLock<Regex>, pattern: &str) -> &'static Regex {
@@ -23,10 +25,13 @@ impl Masker {
         crate::rules::load().map_err(io::Error::other)?;
         let store = Store::open()?;
         let names = Names::load(&store);
-        Ok(Self { store, names })
+        Ok(Self { store, names, learned: false })
     }
 
     pub fn persist(&mut self) -> io::Result<()> {
+        if let (true, Some(names)) = (self.learned, &self.names) {
+            names.save(&self.store)?;
+        }
         self.store.persist()
     }
 
@@ -108,6 +113,10 @@ impl Masker {
         let value = cell.trim();
         if is_nullish(value) || is_token(value) {
             return cell.to_string();
+        }
+        if kind == "PERSON" {
+            let names = self.names.get_or_insert_with(Names::empty);
+            self.learned |= names.learn(&self.store, value);
         }
         cell.replacen(value, &self.store.token(kind, value), 1)
     }
@@ -462,7 +471,7 @@ mod tests {
         let store = crate::store::temporary_store("fuzz");
         Names::build(&store, ["Jean Dupont", "Zoé Xyz"].into_iter(), true).unwrap();
         let names = Names::load(&store);
-        let mut masker = Masker { store, names };
+        let mut masker = Masker { store, names, learned: false };
         for seed in 0..20_000 {
             let text = random_text(seed);
             let masked = catch_unwind(AssertUnwindSafe(|| masker.mask_text(&text)));
