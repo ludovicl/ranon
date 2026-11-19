@@ -1,0 +1,12 @@
+  id  | first_name | last_name |          email          |   phone    |            iban             | organisation_name  | status | created_at
+------+------------+-----------+-------------------------+------------+-----------------------------+--------------------+--------+------------
+ [[KEEP:4211]] | [[PERSON:Jean]] | [[PERSON:Dupont]] | [[EMAIL:jean.dupont@example.com]] | [[PHONE:0612345678]] | [[IBAN:FR7630006000019876543210123]] | [[ORG:Boulangerie Dupuis]] | [[KEEP:active]] | [[KEEP:2026-01-15]]
+ [[KEEP:4212]] | [[PERSON:Nicolas]] | [[PERSON:Mercier]] | [[EMAIL:n.mercier@example.org]] | | | [[ORG:Garage Mercure]] | [[KEEP:pending]] | [[KEEP:2026-02-03]]
+(2 rows)
+
+-[ RECORD 1 ]-+------------------
+id            | [[KEEP:5120]]
+first_name    | [[PERSON:Sophie]]
+last_name     | [[PERSON:Lambert]]
+birth_date    | [[BIRTHDATE:1988-04-02]]
+address       | [[ADDRESS:12 rue des Lilas]]

@@ -1,0 +1,9 @@
+{
+  "id": "[[KEEP:cus_P0000000000001]]",
+  "object": "customer",
+  "name": "[[PERSON:Karim]] [[PERSON:Benali]]",
+  "email": "[[EMAIL:karim.benali@example.com]]",
+  "phone": "[[PHONE:+33611223344]]",
+  "address": {"line1": "[[ADDRESS:8 avenue Foch]]", "city": "[[ADDRESS:Lyon]]", "postal_code": "[[ADDRESS:69006]]", "country": "FR"},
+  "metadata": {"organisation_id": "[[KEEP:4211]]", "plan": "[[KEEP:pay_as_you_go]]"}
+}

@@ -1,0 +1,4 @@
+irb(main):001> User.find([[KEEP:42]])
+=> #<User id: [[KEEP:42]], first_name: "[[PERSON:Sophie]]", last_name: "[[PERSON:Lambert]]", email: "[[EMAIL:sophie.lambert@example.com]]", status: "[[KEEP:active]]", birth_date: "[[BIRTHDATE:1990-07-14]]">
+irb(main):002> user.update!(phone: "[[PHONE:0699887766]]")
+=> true

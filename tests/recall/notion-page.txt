@@ -1,0 +1,11 @@
+<page url="https://www.notion.so/00000000000000000000000000000001">
+<properties>
+{"title":"PI - Remboursement bloqué [[KEEP:CSE Acme Industrie]]","Owner":"[[PERSON:Thomas]] [[PERSON:Girard]]","Statut":"[[KEEP:En cours]]","Assignee":[{"name":"[[PERSON:Camille]] [[PERSON:Rousseau]]","email":"[[EMAIL:camille.rousseau@example.com]]"}]}
+</properties>
+<content>
+## Contexte
+[[PERSON:Hélène]] [[PERSON:Moreau]] a demandé un remboursement de [[KEEP:45,00 €]] le [[KEEP:03/10/2026]].
+Mme [[PERSON:Lambert]] a appelé le support, rappeler au [[PHONE:+33 6 98 76 54 32]].
+Escalade par [[PERSON:Nicolas]] [[PERSON:Mercier]], voir avec [[PERSON:Léa]] demain.
+</content>
+</page>
