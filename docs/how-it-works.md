@@ -28,7 +28,7 @@ flowchart TD
     J["0 · JSON documents<br/>Stripe CLI, APIs, MCP tools<br/>mask by key, with parent as context"] --> T
     T["1 · Tables<br/>psql aligned, -x, -A, --csv, rtk formats<br/>mask by column name"] --> K
     K["2 · Key/value pairs<br/>JSON, Ruby hashes, Rails inspect<br/>mask by key"] --> P
-    P["3 · Patterns anywhere<br/>email, IBAN, French phone numbers"] --> N
+    P["3 · Patterns anywhere<br/>email, IBAN, card, phone, IP, JWT"] --> N
     N["4 · Names in free text<br/>consecutive capitalized words found<br/>in the hashed name dictionary"] --> OUT[/masked output/]
     T -. "separator inside a value" .-> H["row hidden:<br/>[ranon: row hidden, ambiguous format]"]
 ```
@@ -36,10 +36,12 @@ flowchart TD
 0. **JSON documents by key path.** Wherever a line starts a JSON document (the whole output, JSON lines, JSON after a banner) or ends by opening one (`#<Treezor::User id=1> JSON: {`), each key is checked alone and as `parent.key`, where the parent is the object's `"object"` field (Stripe, Notion) or the enclosing key. So a Stripe `customer.name` or `billing_details.name` is masked while a product `name` stays readable, and everything under a sensitive key (`address`, `dob`) is masked.
 1. **Tables by column name.** Sensitive columns: first/last/full names, email, phone, IBAN, birth date and place, address, nationality, social security or tax number, payer/payee names (creditor, debtor, recipient, customer…), organisation name, IP addresses, passwords and tokens ([`src/rules/builtin.rs`](../src/rules/builtin.rs)). Names are matched as written and in snake_case, so `dateOfBirth` and `Last Name` are covered like `date_of_birth` and `last_name`. Other columns (`id`, `status`, `amount`, `country`, …) stay readable, and so do identifiers, timestamps and flags about a personal field (`address_id`, `phone_verified_at`). A row whose separator count does not match the header is hidden rather than guessed.
 2. **Key/value pairs by key**: `first_name: "Jean"`, `"email": "…"`, `"last_name"=>"…"`, JSON inside a CSV cell, and YAML-like lines (`last_name: Dupont`).
-3. **Value patterns anywhere**: email, IBAN (known country code and plausible length), French phone numbers, IPv4 addresses.
+3. **Value patterns anywhere**: email (also URL-encoded, `jean%40example.com`), IBAN (known country code and plausible length), card number (Luhn checksum, grouped by four or joined with a card network prefix), French social security number (checked key), French phone numbers, other phone numbers written with their `+` prefix, IPv4 and IPv6 addresses (IPv6 checked by the standard parser, so clock times and MAC addresses stay readable), and JWTs, masked whole as `SECRET` since their payload carries the user's email.
 4. **Full names in free text**: two or more consecutive capitalized words found in the name dictionary (`Jean Dupont`, `DUPONT Marie-Anne`), or one after a title (`M. Dupont`, `Mme Petit`). Words split only by a record separator count as consecutive: a pipe, a tab or the items of a quoted array (`Jean | Dupont`, `["Jean", "Dupont"]`), but not a plain comma, which in prose separates different people. A lone dictionary word is left alone, because real databases contain junk "names" such as *Bonjour* or *Paris*.
 
 `psql -t` / `--tuples-only` output is hidden: without a header there is no column name to mask by.
+
+Postgres constraint errors are read like a one-row table: in `Key (last_name, first_name)=(Dupont, Paul) already exists.` each value is masked by its column. `Failing row contains (…)` quotes a whole row without column names, so it is hidden.
 
 ## How names are recognized
 

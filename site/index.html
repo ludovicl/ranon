@@ -294,7 +294,7 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 10px 24px; justify-content: 
       <div class="pass"><b>0</b><h3>JSON documents</h3><p>Stripe, APIs, MCP tools. Masked by key, with the parent object as context.</p></div>
       <div class="pass"><b>1</b><h3>Tables</h3><p>Every psql format. Masked by column name; ambiguous rows are hidden, not guessed.</p></div>
       <div class="pass"><b>2</b><h3>Key/value pairs</h3><p>JSON, Ruby hashes, Rails inspect, YAML-like lines.</p></div>
-      <div class="pass"><b>3</b><h3>Patterns</h3><p>Emails, IBANs, French phone numbers and IP addresses, anywhere.</p></div>
+      <div class="pass"><b>3</b><h3>Patterns</h3><p>Emails, IBANs, card numbers, phones, IP addresses and JWTs, anywhere.</p></div>
       <div class="pass"><b>4</b><h3>Names in free text</h3><p>Full names matched against a salted, hashed dictionary built from your users table.</p></div>
     </div>
   </div>
@@ -350,7 +350,8 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 10px 24px; justify-content: 
       <ul>
         <li>It masks results, not queries: a name you type in a <span class="mono">where</span> clause is seen by the model.</li>
         <li>Aliases and computed columns (<span class="mono">select email as e</span>, <span class="mono">first_name || ' ' || last_name</span>) go through: select columns under their own names.</li>
-        <li>Values outside known columns and patterns, unknown names and lone first names in free text go through.</li>
+        <li>In free text, addresses, birth dates, lone or lowercase names go through: only full names from your users table are recognized.</li>
+        <li>Pseudonyms hide values, not records: ids, cities, amounts and dates stay readable, and together they can single a person out.</li>
         <li>The agent runs as you, so it could read the token map. Real isolation needs a separate user or a sandbox.</li>
       </ul>
       <div class="note">
