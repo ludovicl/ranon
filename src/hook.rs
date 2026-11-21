@@ -4,7 +4,7 @@
 use crate::mask::Masker;
 use regex::Regex;
 use serde_json::{Value, json};
-use std::io::{Read, Write};
+use std::io::Read;
 use std::panic::{UnwindSafe, catch_unwind};
 use std::sync::{Mutex, OnceLock};
 
@@ -62,9 +62,7 @@ fn write_log(line: &str) {
         return;
     }
     let path = crate::store::state_dir().join("hook.log");
-    if let Ok(mut file) = crate::store::private_file(&path, true) {
-        writeln!(file, "{}\t{line}", crate::store::now()).ok();
-    }
+    crate::store::append(&path, &format!("{}\t{line}\n", crate::store::now())).ok();
 }
 
 fn masked_response(payload: &Value) -> Result<Option<Value>, String> {

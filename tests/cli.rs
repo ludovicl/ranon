@@ -789,3 +789,26 @@ fn token_maps_written_before_timestamps_still_unmask() {
     assert_eq!(ranon(&home, &["unmask"], "PERSON_abc123"), "Jean");
     assert_eq!(ranon(&home, &["forget", "--older-than", "1"], "").trim(), "1 value(s) forgotten, 0 kept");
 }
+
+#[test]
+fn parallel_runs_keep_the_token_map_lines_whole() {
+    // Claude Code runs several hooks at once when the model calls tools in parallel
+    let home = home();
+    let runs: Vec<_> = (0..16)
+        .map(|run| {
+            let home = home.clone();
+            std::thread::spawn(move || {
+                let emails: String = (0..50).map(|n| format!("user{run}x{n}@example.com\n")).collect();
+                mask(&home, &emails)
+            })
+        })
+        .collect();
+    for run in runs {
+        assert!(!run.join().unwrap().contains("@example.com"));
+    }
+    let map = std::fs::read_to_string(home.join("map.tsv")).unwrap();
+    let token = regex::Regex::new(r"^EMAIL_[0-9a-f]{6}\tuser\d+x\d+@example\.com\t\d{10}$").unwrap();
+    let broken: Vec<&str> = map.lines().filter(|line| !token.is_match(line)).collect();
+    assert!(broken.is_empty(), "{} lines glued or cut, e.g. {:?}", broken.len(), broken.first());
+    assert_eq!(map.lines().count(), 16 * 50);
+}

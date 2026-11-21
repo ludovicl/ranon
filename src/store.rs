@@ -80,12 +80,12 @@ impl Store {
         if self.new_tokens.is_empty() {
             return Ok(());
         }
-        let mut file = private_file(&self.path("map.tsv"), true)?;
+        let mut lines = String::new();
         for token in self.new_tokens.drain(..) {
             let entry = &self.mapping[&token];
-            writeln!(file, "{token}\t{}\t{}", entry.value, entry.first_seen)?;
+            lines.push_str(&format!("{token}\t{}\t{}\n", entry.value, entry.first_seen));
         }
-        Ok(())
+        append(&self.path("map.tsv"), &lines)
     }
 
     /// Replaces known tokens with their real values; unknown tokens are left as they are.
@@ -176,6 +176,12 @@ fn read_mapping(path: &Path) -> io::Result<HashMap<String, Entry>> {
         }
     }
     Ok(mapping)
+}
+
+/// Appends `text` with a single write: hooks run in parallel (several MCP calls at once), and an append made
+/// of several writes interleaves with another process's, which glues the lines of the two together.
+pub fn append(path: &Path, text: &str) -> io::Result<()> {
+    private_file(path, true)?.write_all(text.as_bytes())
 }
 
 pub fn private_file(path: &Path, append: bool) -> io::Result<fs::File> {
