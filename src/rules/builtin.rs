@@ -84,10 +84,21 @@ fn plausible_international_phone(text: &str) -> bool {
     (8..=15).contains(&digits(text).len())
 }
 
+/// Public IPv4 addresses only: private networks, loopback and link-local addresses name no one and are what
+/// infrastructure debugging needs to read.
+fn public_ipv4(text: &str) -> bool {
+    text.parse::<std::net::Ipv4Addr>()
+        .is_ok_and(|ip| !(ip.is_private() || ip.is_loopback() || ip.is_link_local() || ip.is_unspecified()))
+}
+
 /// IPv6 candidates are checked by the standard parser: clock times, MAC addresses and fingerprints fail it.
 /// A digit is required too, so a Ruby or Rust path made of hex letters (`Db::Cafe`) stays readable.
-fn plausible_ipv6(text: &str) -> bool {
-    text.parse::<std::net::Ipv6Addr>().is_ok() && text.chars().any(|c| c.is_ascii_digit())
+/// As for IPv4, loopback, link-local (`fe80::`) and unique local (`fd00::`) addresses stay readable.
+fn public_ipv6(text: &str) -> bool {
+    text.chars().any(|c| c.is_ascii_digit())
+        && text.parse::<std::net::Ipv6Addr>().is_ok_and(|ip| {
+            !(ip.is_loopback() || ip.is_unspecified() || ip.is_unicast_link_local() || ip.is_unique_local())
+        })
 }
 
 /// Identity and contact data, whatever the source.
@@ -190,9 +201,13 @@ const SECURITY: RuleSet = RuleSet {
         ),
     ],
     values: &[
-        value(r"\b(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)\b", "IP"),
+        ValueRule {
+            pattern: r"\b(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)\b",
+            kind: "IP",
+            accepts: Some(public_ipv4),
+        },
         // a whole run of hex groups and colons, so that a fingerprint is not cut into a valid address
-        ValueRule { pattern: r"(?i)\b[0-9a-f]{1,4}(?::+[0-9a-f]{1,4})+\b", kind: "IP", accepts: Some(plausible_ipv6) },
+        ValueRule { pattern: r"(?i)\b[0-9a-f]{1,4}(?::+[0-9a-f]{1,4})+\b", kind: "IP", accepts: Some(public_ipv6) },
         // a JWT is a credential, and its payload carries the user's email and name in base64
         value(r"\beyJ[\w-]+\.eyJ[\w-]+\.[\w-]*", "SECRET"),
     ],

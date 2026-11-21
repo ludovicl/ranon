@@ -21,7 +21,7 @@ Add yours in `~/.config/ranon/` (or `$XDG_CONFIG_HOME/ranon`, or `$RANON_CONFIG_
 └── gmail.toml      # commands = ["composio"]
 ```
 
-Each file can hold four kinds of entries:
+Each file can hold five kinds of entries:
 
 ```toml
 # column or key names → kind; user rules are checked before the built-in ones
@@ -43,6 +43,9 @@ keep = ['^email_id$']
 
 # extra shell commands masked by the Claude Code hook
 commands = ["composio"]
+
+# turn off the built-in rules of a kind, columns and value patterns alike
+disable = ["IP"]
 ```
 
 Patterns are [Rust regexes](https://docs.rs/regex) matched on the lowercased name and on its snake_case form; kinds are uppercase letters. The first match wins, in this order: your `keep`, your `[[column]]` rules, the built-in keeps, the built-in columns. `ranon rules` lists every source, and tells which rule applies to a name and where it comes from:
@@ -59,3 +62,7 @@ status: kept visible
 ```
 
 An invalid file is an error, never a silent fallback: the hook then hides the output.
+
+## Turning a kind off
+
+`disable = ["IP"]` turns off every built-in rule of that kind, for a one-off analysis where you accept that the model reads those values: IP addresses in logs, say. Your own `[[column]]` and `[[value]]` rules of that kind still apply, and `ranon rules` lists what is disabled and by which file. A column can still fall under another kind: with `IP` off, `ip_address` is masked as an `ADDRESS`. Remove the line, or the file, when the analysis is done.

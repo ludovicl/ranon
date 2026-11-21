@@ -22,6 +22,9 @@ struct Config {
     keep: Vec<String>,
     #[serde(default)]
     commands: Vec<String>,
+    /// Built-in rules of these kinds are turned off (`disable = ["IP"]`), columns and value patterns alike.
+    #[serde(default)]
+    disable: Vec<String>,
 }
 
 #[derive(Deserialize)]
@@ -59,6 +62,8 @@ pub struct Rules {
     command_list: Vec<(String, &'static str)>,
     files: Vec<PathBuf>,
     sources: Vec<&'static str>,
+    /// Built-in kinds turned off by a user file, with that file.
+    disabled: Vec<(&'static str, &'static str)>,
 }
 
 static RULES: OnceLock<Rules> = OnceLock::new();
@@ -145,6 +150,7 @@ fn build(configs: Vec<(PathBuf, Config)>) -> Result<Rules, String> {
         command_list: Vec::new(),
         files: Vec::new(),
         sources: Vec::new(),
+        disabled: Vec::new(),
     };
     // user rules come first so they can override a built-in kind or keep
     let mut user_columns = Vec::new();
@@ -161,10 +167,17 @@ fn build(configs: Vec<(PathBuf, Config)>) -> Result<Rules, String> {
             rules.values.push(ValuePattern { re, kind, accepts: None });
         }
         rules.command_list.extend(config.commands.into_iter().map(|command| (command, source)));
+        for kind in config.disable {
+            if kind.is_empty() || !kind.chars().all(|c| c.is_ascii_uppercase()) {
+                return Err(format!("{source}: invalid kind `{kind}` in disable, use uppercase letters only (IP)"));
+            }
+            rules.disabled.push((leak(kind), source));
+        }
         rules.files.push(path);
         rules.sources.push(source);
     }
     rules.names.extend(user_columns);
+    let disabled: Vec<&str> = rules.disabled.iter().map(|(kind, _)| *kind).collect();
     let mut builtin_columns = Vec::new();
     for set in builtin::SETS {
         let source = leak(format!("built-in {}", set.name));
@@ -172,10 +185,10 @@ fn build(configs: Vec<(PathBuf, Config)>) -> Result<Rules, String> {
         for pattern in set.keep {
             rules.names.push(Rule { re: Regex::new(pattern).unwrap(), kind: None, source });
         }
-        for (pattern, kind) in set.columns {
+        for (pattern, kind) in set.columns.iter().filter(|(_, kind)| !disabled.contains(kind)) {
             builtin_columns.push(Rule { re: Regex::new(pattern).unwrap(), kind: Some(kind), source });
         }
-        for value in set.values {
+        for value in set.values.iter().filter(|value| !disabled.contains(&value.kind)) {
             let re = Regex::new(value.pattern).unwrap();
             rules.values.push(ValuePattern { re, kind: value.kind, accepts: value.accepts });
         }
@@ -267,6 +280,7 @@ pub fn summary() -> String {
         lines.push("user files: none (rules.toml, rules.d/*.toml)".to_string());
     }
     lines.extend(rules.files.iter().map(|path| format!("user file: {}", path.display())));
+    lines.extend(rules.disabled.iter().map(|(kind, source)| format!("disabled: built-in {kind} rules ({source})")));
     for source in &rules.sources {
         let from_source = || rules.names.iter().filter(|rule| rule.source == *source);
         let columns = from_source().filter(|rule| rule.kind.is_some()).count();
@@ -416,7 +430,7 @@ mod tests {
         assert_eq!(kinds("+33 6 12 34 56 78"), ["PHONE"]);
         assert!(kinds("uuid 3f2a-0123-4567-89ab").is_empty());
         assert!(kinds("order AB12CDEF3456, code FR76ABCD1234, sku XY99 ABCD EFGH IJKL").is_empty());
-        assert_eq!(kinds("from 192.168.1.20"), ["IP"]);
+        assert_eq!(kinds("from 203.0.113.42"), ["IP"]);
         assert!(kinds("amount 1234.56, id 42, version 1.2.3, at 12:34:56").is_empty());
         assert_eq!(kinds("q=jean%40example.com"), ["EMAIL"]);
         assert_eq!(kinds("4242 4242 4242 4242"), ["CARD"]);
@@ -434,6 +448,10 @@ mod tests {
         assert!(kinds("SIRET 73282932000074, +0000, +01:00, total +1 234").is_empty());
         assert!(kinds("mac 00:1a:2b:3c:4d:5e, 43:51:43:a1:b5:fc:8b:b7:0a:3a:a9:b1:0f:66:73:a8").is_empty());
         assert!(kinds("Db::Cache Treezor::User std::fmt").is_empty());
+        // addresses that name no one: private networks, loopback, link-local
+        assert!(kinds("10.0.0.12 172.16.4.2 192.168.1.20 127.0.0.1 169.254.1.1 0.0.0.0").is_empty());
+        assert!(kinds("::1 fe80::1ff:fe23:4567:890a fd12:3456:789a::1").is_empty());
+        assert_eq!(kinds("from 172.32.0.1"), ["IP"]);
     }
 
     #[test]
@@ -474,6 +492,18 @@ mod tests {
         assert_eq!(lookup(&rules, "iban").unwrap().source, "built-in payments");
         assert_eq!(lookup(&rules, "city").unwrap().source, "notion.toml");
         assert!(rules.commands.is_match("curl https://api.stripe.com/v1/customers"));
+    }
+
+    #[test]
+    fn disable_turns_off_builtin_rules_of_a_kind() {
+        let config: Config = toml::from_str("disable = [\"IP\"]").unwrap();
+        let rules = build(vec![(PathBuf::from("analysis.toml"), config)]).unwrap();
+        assert_eq!(rules.kind("remote_ip"), None);
+        assert_eq!(rules.kind("email"), Some("EMAIL"));
+        assert!(rules.values.iter().all(|pattern| pattern.kind != "IP"));
+        assert!(rules.values.iter().any(|pattern| pattern.kind == "EMAIL"));
+        let invalid: Config = toml::from_str("disable = [\"ip\"]").unwrap();
+        assert!(build(vec![(PathBuf::from("x.toml"), invalid)]).is_err());
     }
 
     #[test]
