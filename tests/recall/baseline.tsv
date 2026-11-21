@@ -1,4 +1,12 @@
 # source	kind	as expected	marked
+errors-and-logs.txt	CARD	1	1
+errors-and-logs.txt	EMAIL	1	1
+errors-and-logs.txt	IP	1	1
+errors-and-logs.txt	KEEP	8	8
+errors-and-logs.txt	PERSON	4	4
+errors-and-logs.txt	PHONE	1	1
+errors-and-logs.txt	SECRET	1	1
+errors-and-logs.txt	SSN	1	1
 heroku-logs.txt	EMAIL	1	1
 heroku-logs.txt	IP	2	2
 heroku-logs.txt	KEEP	2	2

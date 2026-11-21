@@ -418,6 +418,22 @@ mod tests {
         assert!(kinds("order AB12CDEF3456, code FR76ABCD1234, sku XY99 ABCD EFGH IJKL").is_empty());
         assert_eq!(kinds("from 192.168.1.20"), ["IP"]);
         assert!(kinds("amount 1234.56, id 42, version 1.2.3, at 12:34:56").is_empty());
+        assert_eq!(kinds("q=jean%40example.com"), ["EMAIL"]);
+        assert_eq!(kinds("4242 4242 4242 4242"), ["CARD"]);
+        assert_eq!(kinds("4000-0566-5566-5556"), ["CARD"]);
+        assert_eq!(kinds("5555555555554444"), ["CARD"]);
+        assert_eq!(kinds("1 85 05 78 006 084 91"), ["SSN"]);
+        assert_eq!(kinds("185057800608491"), ["SSN"]);
+        assert_eq!(kinds("2 90 01 2A 012 345 38"), ["SSN"]);
+        assert_eq!(kinds("+44 20 7946 0958"), ["PHONE"]);
+        assert_eq!(kinds("+1 415 555 0132"), ["PHONE"]);
+        assert_eq!(kinds("from 2001:db8::8a2e:370:7334"), ["IP"]);
+        assert_eq!(kinds("Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.sig-nature"), ["SECRET"]);
+        // card and NIR checksums, timestamps, SIRET, times, MAC addresses, fingerprints, hex-letter paths
+        assert!(kinds("4242 4242 4242 4241, 1 85 05 78 006 084 36, at 1795260270123 ms").is_empty());
+        assert!(kinds("SIRET 73282932000074, +0000, +01:00, total +1 234").is_empty());
+        assert!(kinds("mac 00:1a:2b:3c:4d:5e, 43:51:43:a1:b5:fc:8b:b7:0a:3a:a9:b1:0f:66:73:a8").is_empty());
+        assert!(kinds("Db::Cache Treezor::User std::fmt").is_empty());
     }
 
     #[test]

@@ -39,6 +39,7 @@ impl Masker {
         let text = self.mask_json_documents(text);
         let text = self.mask_tables(&text);
         let text = self.mask_key_values(&text);
+        let text = self.mask_constraint_details(&text);
         let text = self.mask_patterns(&text);
         self.mask_names(&text)
     }
@@ -272,6 +273,42 @@ impl Masker {
                 .into_owned();
         }
         text
+    }
+
+    /// Postgres constraint errors: `Key (last_name, first_name)=(Dupont, Paul) already exists.` names the columns
+    /// of the values it quotes, so each value is masked by its column. `Failing row contains (…)` quotes a whole
+    /// row without column names: it is hidden, like an ambiguous table row.
+    fn mask_constraint_details(&mut self, text: &str) -> String {
+        static KEY: OnceLock<Regex> = OnceLock::new();
+        static FAILING_ROW: OnceLock<Regex> = OnceLock::new();
+        let key =
+            re(&KEY, r"Key \(([^()\n]+)\)=\((.*?)\)( already exists| is not present| is still referenced| conflicts)");
+        let text = key
+            .replace_all(text, |c: &Captures| {
+                let columns: Vec<&str> = c[1].split(", ").collect();
+                let kinds: Vec<Option<&str>> =
+                    columns.iter().map(|column| column_kind(column.trim().trim_matches('"'))).collect();
+                if kinds.iter().all(Option::is_none) {
+                    return c[0].to_string();
+                }
+                let values: Vec<&str> = c[2].split(", ").collect();
+                let masked = if values.len() == columns.len() {
+                    let cells: Vec<String> = kinds
+                        .iter()
+                        .zip(&values)
+                        .map(|(kind, value)| kind.map_or_else(|| value.to_string(), |k| self.mask_cell(k, value)))
+                        .collect();
+                    cells.join(", ")
+                } else {
+                    // a comma inside a value: the values cannot be matched with their columns
+                    "[ranon: values hidden, ambiguous format]".to_string()
+                };
+                format!("Key ({})=({masked}){}", &c[1], &c[3])
+            })
+            .into_owned();
+        re(&FAILING_ROW, r"Failing row contains \(.*\)")
+            .replace_all(&text, "Failing row contains [ranon: row hidden, no column names]")
+            .into_owned()
     }
 
     fn mask_patterns(&mut self, text: &str) -> String {

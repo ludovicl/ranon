@@ -33,6 +33,63 @@ fn plausible_iban(text: &str) -> bool {
     (15..=34).contains(&compact_len) && IBAN_COUNTRIES.split_whitespace().any(|country| text.starts_with(country))
 }
 
+fn digits(text: &str) -> Vec<u32> {
+    text.chars().filter_map(|c| c.to_digit(10)).collect()
+}
+
+/// Card numbers: Luhn checksum, and either groups of four (`4242 4242 4242 4242`) or 15/16 joined digits
+/// starting like a card network (3 Amex, 4 Visa, 5 and 2 Mastercard, 6 Discover). Millisecond timestamps
+/// (13 digits from 1) and SIRET numbers (14 digits) do not qualify.
+fn plausible_card(text: &str) -> bool {
+    let numbers = digits(text);
+    let grouped = text.contains([' ', '-'])
+        && text.split([' ', '-']).all(|group| !group.is_empty())
+        && text.split([' ', '-']).rev().skip(1).all(|group| group.len() == 4);
+    let joined = !text.contains([' ', '-']) && matches!(numbers.len(), 15 | 16) && "23456".contains(&text[..1]);
+    let luhn = numbers
+        .iter()
+        .rev()
+        .enumerate()
+        .map(|(i, &d)| if i % 2 == 1 { if d * 2 > 9 { d * 2 - 9 } else { d * 2 } } else { d })
+        .sum::<u32>()
+        % 10
+        == 0;
+    (13..=19).contains(&numbers.len()) && (grouped || joined) && luhn
+}
+
+/// French social security numbers (NIR): the last two digits are 97 minus the first thirteen modulo 97,
+/// with Corsica's 2A and 2B counted as 19 and 18.
+fn plausible_nir(text: &str) -> bool {
+    let compact: String = text.chars().filter(|c| c.is_ascii_alphanumeric()).collect();
+    if compact.len() != 15 {
+        return false;
+    }
+    let (body, key) = compact.split_at(13);
+    let body = body.replace("2A", "19").replace("2B", "18");
+    let offset = if compact[5..7].eq("2A") {
+        1_000_000
+    } else if compact[5..7].eq("2B") {
+        2_000_000
+    } else {
+        0
+    };
+    match (body.parse::<u64>(), key.parse::<u64>()) {
+        (Ok(body), Ok(key)) => 97 - (body - offset) % 97 == key,
+        _ => false,
+    }
+}
+
+/// International phone numbers written with their `+` prefix: 8 to 15 digits, as E.164 allows.
+fn plausible_international_phone(text: &str) -> bool {
+    (8..=15).contains(&digits(text).len())
+}
+
+/// IPv6 candidates are checked by the standard parser: clock times, MAC addresses and fingerprints fail it.
+/// A digit is required too, so a Ruby or Rust path made of hex letters (`Db::Cafe`) stays readable.
+fn plausible_ipv6(text: &str) -> bool {
+    text.parse::<std::net::Ipv6Addr>().is_ok() && text.chars().any(|c| c.is_ascii_digit())
+}
+
 /// Identity and contact data, whatever the source.
 const COMMON: RuleSet = RuleSet {
     name: "common",
@@ -54,9 +111,22 @@ const COMMON: RuleSet = RuleSet {
         (r"(^|_)(organi[sz]ation|company|corporate|legal|business|trade|commercial)_?name$|^organi[sz]ation$", "ORG"),
     ],
     values: &[
-        value(r"[\w.+-]+@[\w-]+(\.[\w-]+)+", "EMAIL"),
+        // `%40` is the `@` of an email inside a URL (`?email=jean%40example.com` in request logs)
+        value(r"[\w.+-]+(?:@|%40)[\w-]+(\.[\w-]+)+", "EMAIL"),
+        ValueRule {
+            pattern: r"\b[12][ .]?\d{2}[ .]?\d{2}[ .]?(?:\d{2}|2[AB])[ .]?\d{3}[ .]?\d{3}[ .]?\d{2}\b",
+            kind: "SSN",
+            accepts: Some(plausible_nir),
+        },
         // digits all separated or all joined: a mix is more likely a piece of an identifier
         value(r"(?:\+33[ .]?|\b0)[1-9](?:(?:[ .-]\d{2}){4}|\d{8})\b", "PHONE"),
+        // other countries only with their `+` prefix: without it, too many technical numbers look alike;
+        // +33 is left to the French rule above
+        ValueRule {
+            pattern: r"\+(?:[124-9]\d{0,2}|3[0-24-9]\d?)(?:[ .-]?\(?\d{1,4}\)?){2,5}\b",
+            kind: "PHONE",
+            accepts: Some(plausible_international_phone),
+        },
     ],
     commands: &[],
 };
@@ -84,11 +154,14 @@ const PAYMENTS: RuleSet = RuleSet {
         // Stripe objects: `name` is a person inside these parents
         (r"(^|\.)(billing_details|shipping|customer|individual|person|cardholder|account_holder)\.name$", "PERSON"),
     ],
-    values: &[ValueRule {
-        pattern: r"\b[A-Z]{2}\d{2}(?: ?[A-Z0-9]{4}){2,7}(?: ?[A-Z0-9]{1,4})?\b",
-        kind: "IBAN",
-        accepts: Some(plausible_iban),
-    }],
+    values: &[
+        ValueRule {
+            pattern: r"\b[A-Z]{2}\d{2}(?: ?[A-Z0-9]{4}){2,7}(?: ?[A-Z0-9]{1,4})?\b",
+            kind: "IBAN",
+            accepts: Some(plausible_iban),
+        },
+        ValueRule { pattern: r"\b\d(?:[ -]?\d){12,18}\b", kind: "CARD", accepts: Some(plausible_card) },
+    ],
     commands: &["stripe"],
 };
 
@@ -116,7 +189,13 @@ const SECURITY: RuleSet = RuleSet {
             "SECRET",
         ),
     ],
-    values: &[value(r"\b(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)\b", "IP")],
+    values: &[
+        value(r"\b(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)\b", "IP"),
+        // a whole run of hex groups and colons, so that a fingerprint is not cut into a valid address
+        ValueRule { pattern: r"(?i)\b[0-9a-f]{1,4}(?::+[0-9a-f]{1,4})+\b", kind: "IP", accepts: Some(plausible_ipv6) },
+        // a JWT is a credential, and its payload carries the user's email and name in base64
+        value(r"\beyJ[\w-]+\.eyJ[\w-]+\.[\w-]*", "SECRET"),
+    ],
     commands: &[],
 };
 

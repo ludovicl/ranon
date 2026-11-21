@@ -1,0 +1,10 @@
+2026-11-18T10:00:04.000000+00:00 app[web.1]: Started GET "/api/v1/users?email=[[EMAIL:lucie.garnier%40example.com]]&page=2" for [[IP:2001:db8:85a3::8a2e:370:7334]] at 2026-11-18 10:00:04 +0000
+2026-11-18T10:00:04.000000+00:00 app[web.1]: Authorization: Bearer [[SECRET:eyJhbGciOiJIUzI1NiJ9.eyJlbWFpbCI6Imx1Y2llQGV4YW1wbGUuY29tIn0.Sfl_KxwRJ-xyz]]
+2026-11-18T10:00:04.000000+00:00 app[web.1]: Processing by Users::SearchController#index, request_id=[[KEEP:3f2a9c1e-0123-4567-89ab-0c1d2e3f4a5b]] at [[KEEP:1795260270123]] ms
+2026-11-18T10:00:05.000000+00:00 app[web.1]: [[KEEP:ActiveRecord::RecordNotUnique]]: PG::UniqueViolation: ERROR:  duplicate key value violates unique constraint "index_users_on_last_name_and_first_name"
+DETAIL:  Key (last_name, first_name)=([[PERSON:Lefort]], [[PERSON:Paul]]) already exists.
+2026-11-18T10:00:06.000000+00:00 app[web.1]: PG::NotNullViolation: ERROR:  null value in column "plan" of relation "users" violates not-null constraint
+DETAIL:  Failing row contains (42, [[PERSON:Lucie]], [[PERSON:Garnier]], null, null).
+2026-11-18T10:00:07.000000+00:00 app[web.1]: PG::ForeignKeyViolation: DETAIL:  Key (user_id)=([[KEEP:4217]]) is not present in table "users".
+2026-11-18T10:00:08.000000+00:00 app[worker.1]: Payout failed for card [[CARD:4242 4242 4242 4242]], siret [[KEEP:73282932000074]], ssn on file [[SSN:1 85 05 78 006 084 91]], callback [[PHONE:+44 20 7946 0958]]
+2026-11-18T10:00:09.000000+00:00 app[worker.1]: ssh host key [[KEEP:43:51:43:a1:b5:fc:8b:b7:0a:3a:a9:b1:0f:66:73:a8]], device [[KEEP:00:1a:2b:3c:4d:5e]], job took [[KEEP:12:34:56]]
