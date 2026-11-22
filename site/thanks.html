@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Thank you · ranon</title>
+<meta name="robots" content="noindex">
+<link rel="icon" href="/logo.svg" type="image/svg+xml">
+<link rel="icon" href="/favicon-32.png" type="image/png" sizes="32x32">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<style>
+:root {
+  --bg: #fbfaf7; --surface: #ffffff; --text: #16181d; --muted: #5d6370; --border: #e2ded4; --accent: #0f9f6e;
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, "Helvetica Neue", Arial, sans-serif;
+  --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #0b0e13; --surface: #141a22; --text: #e8ebf0; --muted: #97a0ad; --border: #232c38; --accent: #3ddc97; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 17px/1.6 var(--sans); }
+main { max-width: 640px; margin: 0 auto; padding: 72px 16px; }
+.logo { display: inline-flex; align-items: center; gap: 10px; font-weight: 700; font-size: 18px; color: var(--text); text-decoration: none; margin-bottom: 40px; }
+.logo img { width: 28px; height: 28px; }
+.kicker { font: 600 13px/1 var(--mono); color: var(--accent); margin: 0 0 12px; }
+h1 { font-size: clamp(28px, 5vw, 38px); line-height: 1.15; letter-spacing: -.025em; margin: 0 0 16px; }
+p { color: var(--muted); margin: 0 0 16px; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 24px; margin: 28px 0; }
+.card h2 { font-size: 18px; margin: 0 0 12px; }
+.card ul { margin: 0; padding-left: 20px; color: var(--muted); }
+.card li + li { margin-top: 8px; }
+a { color: var(--accent); }
+code { font: 14px var(--mono); }
+</style>
+</head>
+<body>
+<main>
+  <a class="logo" href="/"><img src="/logo.svg" alt="">ranon</a>
+  <p class="kicker">// license active</p>
+  <h1>Thank you, your team is licensed.</h1>
+  <p>Your organization can now use ranon beyond 3 users, within the limit of your plan. There is nothing to install or activate: the license is your subscription.</p>
+  <div class="card">
+    <h2>What happens next</h2>
+    <ul>
+      <li>Stripe emails you a receipt and an invoice. Each renewal sends a new one.</li>
+      <li>Install or update ranon on every machine: <code>brew install ludovicl/tap/ranon</code>, then <code>ranon init -g</code>.</li>
+      <li>Support, a quote, an invoice change or more users: write to <a href="mailto:ranon@lardies.fr">ranon@lardies.fr</a>.</li>
+    </ul>
+  </div>
+  <p><a href="/">Back to ranon.app</a></p>
+</main>
+</body>
+</html>
