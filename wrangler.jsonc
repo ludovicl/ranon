@@ -5,6 +5,9 @@
     "directory": "./site"
   },
   "routes": [
+    { "pattern": "ranon.app", "custom_domain": true },
+    { "pattern": "www.ranon.app", "custom_domain": true },
+    // old address, redirected to ranon.app by a rule on the lrds.app zone
     { "pattern": "ranon.lrds.app", "custom_domain": true }
   ]
 }
