@@ -30,6 +30,8 @@ ranon init -g --agent cursor     # Cursor
 
 `-g` sets it up for all your projects; without it, only the current one.
 
+**Windows**: not supported natively yet. Under WSL, the Linux build should work as long as your agent runs inside WSL too; this is untested. Need native Windows? Write to ranon@lardies.fr.
+
 Without Homebrew: a static binary from [Releases](https://github.com/ludovicl/ranon/releases/latest), or `cargo install ranon` (Rust 1.88+).
 
 Restart your agent. That's it: when it runs `psql`, `heroku run` or an MCP tool, it reads tokens instead of names and emails. Nothing to learn, nothing to call.
