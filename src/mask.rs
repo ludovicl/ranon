@@ -214,7 +214,8 @@ impl Masker {
             return i + 1;
         }
         let mut j = i + 1;
-        if lines.get(j).is_some_and(|l| re(&SEPARATOR, r"^\s*-+(\+-+)*\s*$").is_match(l)) {
+        let has_separator = lines.get(j).is_some_and(|l| re(&SEPARATOR, r"^\s*-+(\+-+)*\s*$").is_match(l));
+        if has_separator {
             j += 1;
         }
         while j < lines.len() {
@@ -239,6 +240,9 @@ impl Masker {
                 "[ranon: row hidden, ambiguous format]".to_string()
             };
             j += 1;
+        }
+        if sep == '|' && has_separator {
+            realign_psql_table(&mut lines[i..j], &kinds);
         }
         j
     }
@@ -423,6 +427,49 @@ fn split_cells(line: &str, sep: char) -> Vec<String> {
         }
     }
     line.split(sep).map(String::from).collect()
+}
+
+/// psql aligned output (header, separator, rows): a token is wider or narrower than the value it replaces, so the
+/// masked columns are padded again, header centered and values left-aligned like psql does for text. Other columns
+/// keep their exact text. A table with a hidden row is left as it is.
+fn realign_psql_table(lines: &mut [String], kinds: &[Option<&str>]) {
+    let segments: Vec<&str> = lines[1].trim_end().split('+').collect();
+    let rows: Vec<Vec<String>> =
+        lines.iter().enumerate().filter(|(n, _)| *n != 1).map(|(_, line)| split_cells(line, '|')).collect();
+    if segments.len() != kinds.len() || rows.iter().any(|row| row.len() != kinds.len()) {
+        return;
+    }
+    let width = |k: usize| rows.iter().map(|row| row[k].trim().chars().count()).max().unwrap_or(0);
+    let widths: Vec<usize> = (0..kinds.len()).map(width).collect();
+    let pad = |row: &[String], header: bool| -> String {
+        let cells: Vec<String> = row
+            .iter()
+            .enumerate()
+            .map(|(k, cell)| match kinds[k] {
+                None => cell.clone(),
+                Some(_) => {
+                    let text = cell.trim();
+                    let room = widths[k] - text.chars().count();
+                    let left = if header { room / 2 } else { 0 };
+                    format!(" {}{text}{} ", " ".repeat(left), " ".repeat(room - left))
+                }
+            })
+            .collect();
+        cells.join("|").trim_end().to_string()
+    };
+    let separator: Vec<String> = segments
+        .iter()
+        .enumerate()
+        .map(|(k, segment)| match kinds[k] {
+            None => segment.to_string(),
+            Some(_) => "-".repeat(widths[k] + 2),
+        })
+        .collect();
+    lines[1] = separator.join("+");
+    lines[0] = pad(&rows[0], true);
+    for (line, row) in lines[2..].iter_mut().zip(&rows[1..]) {
+        *line = pad(row, false);
+    }
 }
 
 fn join_cells(cells: &[String], sep: char) -> String {

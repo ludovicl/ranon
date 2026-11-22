@@ -68,6 +68,20 @@ fn psql_aligned_table() {
 }
 
 #[test]
+fn psql_aligned_table_stays_aligned() {
+    let out = mask(
+        &home(),
+        " id | first_name |          email          | plan | mrr \n----+------------+-------------------------+------+-----\n 42 | Jean       | jean.dupont@example.com | pro  |  49\n 43 | Marie-Anne | m@example.org           | team | 199\n(2 rows)\n",
+    );
+    assert_hidden(&out, &["Jean", "Marie-Anne", "jean.dupont@example.com", "m@example.org"]);
+    let table: Vec<&str> = out.lines().take(4).collect();
+    let pipes =
+        |line: &str| line.char_indices().filter(|(_, c)| *c == '|' || *c == '+').map(|(n, _)| n).collect::<Vec<_>>();
+    assert!(table.iter().all(|line| pipes(line) == pipes(table[0])), "columns must line up:\n{out}");
+    assert!(table[2].starts_with(" 42 |") && table[3].ends_with("| team | 199"), "{out}");
+}
+
+#[test]
 fn psql_single_column_table_keeps_footer() {
     let out = mask(&home(), " first_name \n------------\n Jean\n(1 row)\n");
     assert_hidden(&out, &["Jean"]);
