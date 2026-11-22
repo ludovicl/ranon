@@ -77,6 +77,8 @@ code { font-size: .88em; background: var(--bg-alt); border: 1px solid var(--bord
 .eyebrow { display: inline-flex; align-items: center; gap: 8px; font: 600 13px/1 var(--mono); color: var(--accent); background: var(--accent-soft); padding: 7px 11px; border-radius: 999px; }
 h1 { font-size: clamp(36px, 5.4vw, 56px); line-height: 1.05; letter-spacing: -.035em; margin: 20px 0 18px; text-wrap: balance; }
 h1 em { font-style: normal; color: var(--accent); }
+.lede .acr { color: var(--text); font-weight: 600; }
+.lede .acr b { color: var(--accent); }
 .lede { font-size: 19px; color: var(--muted); margin: 0 0 28px; max-width: 34em; text-wrap: pretty; }
 .cta { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
 .btn { display: inline-flex; align-items: center; gap: 8px; padding: 12px 18px; border-radius: 10px; font-weight: 600; font-size: 15px; text-decoration: none; border: 1px solid var(--border); background: var(--surface); transition: transform .15s ease, border-color .15s ease; }
@@ -193,7 +195,7 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 10px 24px; justify-content: 
     <div>
       <span class="eyebrow">Open source · Rust · MIT / Apache-2.0</span>
       <h1>Your agent reads prod.<br><em>Your users' names stay home.</em></h1>
-      <p class="lede">ranon sits between your coding agent and the commands it runs. Names, emails, IBANs and addresses become stable pseudonyms before the model sees them. The agent still joins, counts and debugs. The personal data never leaves your machine.</p>
+      <p class="lede">ranon, short for <span class="acr"><b>R</b>ust <b>anon</b>ymizer</span>, sits between your coding agent and the commands it runs. Names, emails, IBANs and addresses become stable pseudonyms before the model sees them. The agent still joins, counts and debugs. The personal data never leaves your machine.</p>
       <div class="cta">
         <a class="btn btn-primary" href="#install">Install in two commands</a>
         <a class="btn" href="https://github.com/ludovicl/ranon">View on GitHub</a>
@@ -395,7 +397,7 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 10px 24px; justify-content: 
 
 <footer>
   <div class="wrap">
-    <span>ranon · MIT or Apache-2.0 · made by <a href="https://lardies.fr">Ludovic Lardies</a></span>
+    <span>ranon, the Rust anonymizer · MIT or Apache-2.0 · made by <a href="https://lardies.fr">Ludovic Lardies</a></span>
     <span>This page loads no script, no font and no tracker.</span>
   </div>
 </footer>
