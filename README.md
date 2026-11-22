@@ -20,8 +20,15 @@ macOS or Linux:
 
 ```sh
 brew install ludovicl/tap/ranon
-ranon init -g       # Claude Code; every other agent: see "Works in your agent"
+
+# then the line for your agent:
+ranon init -g                    # Claude Code
+ranon init -g --agent opencode   # OpenCode
+ranon init -g --agent codex      # Codex (CLI and desktop app)
+ranon init -g --agent cursor     # Cursor
 ```
+
+`-g` sets it up for all your projects; without it, only the current one.
 
 Without Homebrew: a static binary from [Releases](https://github.com/ludovicl/ranon/releases/latest), or `cargo install ranon` (Rust 1.88+).
 

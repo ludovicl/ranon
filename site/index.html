@@ -387,12 +387,16 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 10px 24px; justify-content: 
   <div class="wrap">
     <p class="kicker">// install &amp; forget</p>
     <h2>Two commands, then restart your agent.</h2>
-    <p class="sub">macOS or Linux. <span class="mono">--dry-run</span> shows what changes before writing it, <span class="mono">--uninstall</span> removes it.</p>
+    <p class="sub">macOS or Linux. Install, then run the line for your agent. <span class="mono">-g</span> sets it up for all your projects, <span class="mono">--dry-run</span> shows what changes before writing it, <span class="mono">--uninstall</span> removes it.</p>
     <div class="term">
       <div class="term-bar"><i></i><i></i><i></i><b>~</b></div>
 <pre><span class="p">$</span> brew install ludovicl/tap/ranon   <span class="d"># or cargo install ranon</span>
-<span class="p">$</span> ranon init -g        <span class="d"># Claude Code; other agents: --agent cursor|codex|opencode</span>
-<span class="p">$</span> ranon doctor         <span class="d"># checks binary, rules, state and hooks</span></pre>
+<span class="d"># then the line for your agent:</span>
+<span class="p">$</span> ranon init -g                    <span class="d"># Claude Code</span>
+<span class="p">$</span> ranon init -g --agent opencode   <span class="d"># OpenCode</span>
+<span class="p">$</span> ranon init -g --agent codex      <span class="d"># Codex</span>
+<span class="p">$</span> ranon init -g --agent cursor     <span class="d"># Cursor</span>
+<span class="p">$</span> ranon doctor                     <span class="d"># checks that masking is in place</span></pre>
     </div>
     <div class="cta">
       <a class="btn btn-primary" href="https://github.com/ludovicl/ranon/blob/main/docs/getting-started.md">Getting started</a>

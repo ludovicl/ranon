@@ -4,7 +4,8 @@
 brew install ludovicl/tap/ranon  # or a binary from GitHub Releases
 ranon init -g                    # Claude Code, every project
 ranon init -g --agent opencode   # or OpenCode
-ranon init -g --agent codex      # or Codex CLI, from your own terminal
+ranon init -g --agent codex      # or Codex (CLI and desktop app), from your own terminal
+ranon init -g --agent cursor     # or Cursor
 ```
 
 Without `-g`, `ranon init` configures the current project only. `--dry-run` prints the diff without writing it, `--show` lists where ranon is wired, `--uninstall` removes ranon's entries and nothing else. Existing settings are kept, and running it twice changes nothing. Then restart the agent session.
