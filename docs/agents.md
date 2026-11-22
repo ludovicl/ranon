@@ -2,12 +2,12 @@
 
 `ranon init` wires each agent below and keeps what is already in its config. This page shows what it writes, and how to do it by hand.
 
-What ranon can mask depends on what the harness lets a hook do. Claude Code lets a hook rewrite any tool output, Cursor the output of MCP tools and the input of shell commands; elsewhere, the PATH shim covers shell commands and MCP output stays in clear.
+What ranon can mask depends on what the harness lets a hook do. Claude Code lets a hook rewrite any tool output, OpenCode a plugin rewrite any tool result and input, Cursor the output of MCP tools and the input of shell commands; elsewhere, the PATH shim covers shell commands and MCP output stays in clear.
 
 | Harness | Shell commands | MCP tools | Real values back before a write | Wiring |
 |---|---|---|---|---|
 | Claude Code | yes, hook | yes, hook | yes, `PreToolUse` | `ranon init`, [details](#claude-code) |
-| OpenCode | yes, PATH shim | no | no | `ranon init --agent opencode`, [details](#opencode) |
+| OpenCode | yes, PATH shim | yes, plugin | yes, without approval | `ranon init --agent opencode`, [details](#opencode) |
 | Codex CLI | yes, PATH shim | no | no | `ranon init --agent codex`, [details](#codex-cli) |
 | Cursor | yes, command rewritten | yes, hook | yes, without approval | `ranon init --agent cursor`, [details](#cursor) |
 
@@ -53,29 +53,13 @@ Where that PATH is set depends on the harness.
 
 ### OpenCode
 
-`ranon init --agent opencode` creates the shims and writes this plugin to `.opencode/plugins/ranon.ts` (`-g`: `~/.config/opencode/plugins/ranon.ts`). OpenCode hands the environment of every shell command to a plugin, so one file is enough:
+`ranon init --agent opencode` creates the shims and writes a plugin to `.opencode/plugins/ranon.ts` (`-g`: `~/.config/opencode/plugins/ranon.ts`). OpenCode hands every shell command and every tool call to plugins, MCP tools included, also when the model calls them from Code Mode (`execute`). The plugin:
 
-```ts
-// .opencode/plugins/ranon.ts, or ~/.config/opencode/plugins/ranon.ts for every project
-import { existsSync } from "node:fs"
-import { homedir } from "node:os"
-import { join } from "node:path"
+- puts the shims first in the PATH of the agent's shell commands (`shell` `create.before`);
+- sends each tool result to `ranon hook opencode` before the model reads it (`tool` `execute.after`): MCP tools and Code Mode are masked, the `read` tool on data files only (`.csv`, `.json`, `.log`…), OpenCode's other tools are left alone. A result holds its output twice, as text `content` and as a structured `output` that Code Mode reuses: both are masked;
+- puts real values back in place of tokens in the input of MCP tools (`tool` `execute.before`), so a search or a write reaches the real data. OpenCode has no approval step for a rewritten input, unlike Claude Code: a token the model writes to Slack or Notion goes out as the real value.
 
-const shims = join(homedir(), ".local", "share", "ranon", "shims")
-
-export default {
-  id: "ranon",
-  async setup(ctx: any) {
-    if (!existsSync(shims)) return
-    await ctx.shell.hook("create.before", (event: { env?: Record<string, string | undefined> }) => {
-      if (!event.env) return
-      const path = event.env.PATH ?? process.env.PATH ?? ""
-      if (path.split(":").includes(shims)) return
-      event.env.PATH = `${shims}:${path}`
-    })
-  },
-}
-```
+If the ranon binary is missing or fails, the result of an MCP tool, Code Mode or a data file is hidden; other tools keep working. Checked in a real OpenCode 2.3.2 session with a local MCP server (22/11/2026).
 
 ### Codex CLI
 

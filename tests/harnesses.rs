@@ -3,6 +3,8 @@
 //!   through the hook, so a change in their shape shows up here.
 //! - Codex CLI and OpenCode: `ranon init` writes their config, the test runs a shell the way the agent
 //!   would with that config, and a fake `psql` behind the shims must come out masked.
+//! - OpenCode tools: the plugin runs under Node and its tool hooks get MCP results and inputs shaped like
+//!   the ones a real session passes.
 
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
@@ -242,6 +244,79 @@ fn opencode_shell_commands_are_masked() {
     let plugin = project.join(".opencode/plugins/ranon.ts");
     let opencode_path = stdout(Command::new(node).args(["--input-type=module", "-e", driver]).arg(&plugin).arg(&path));
     assert_hidden(&psql_through(&home, &opencode_path));
+}
+
+/// Fires the plugin's tool hooks the way OpenCode does (checked in a real session with an MCP server, OpenCode
+/// 2.3.2, 22/11/2026: the hooks get MCP calls, also inside Code Mode, and OpenCode reads the objects back).
+fn opencode_tool_events(home: &Path, plugin: &Path, events: &serde_json::Value) -> serde_json::Value {
+    let node = required("node", "CI").unwrap();
+    let driver = r#"
+        import { pathToFileURL } from "node:url"
+        const [plugin, events] = process.argv.slice(1)
+        const { default: ranon } = await import(pathToFileURL(plugin).href)
+        const hooks = {}
+        await ranon.setup({ shell: { hook: async () => {} }, tool: { hook: async (name, fn) => { hooks[name] = fn } } })
+        const fired = JSON.parse(events)
+        for (const event of fired) await hooks[`execute.${event.when}`](event)
+        process.stdout.write(JSON.stringify(fired))
+    "#;
+    let mut node = command(node.to_str().unwrap(), home);
+    let out = stdout(node.args(["--input-type=module", "-e", driver]).arg(plugin).arg(events.to_string()));
+    serde_json::from_str(&out).unwrap()
+}
+
+#[test]
+fn opencode_tool_results_are_masked_and_inputs_restored() {
+    if required("node", "CI").is_none() {
+        return;
+    }
+    let home = home();
+    let project = home.join("project");
+    std::fs::create_dir_all(&project).unwrap();
+    stdout(
+        command(BIN, &home)
+            .args(["init", "--agent", "opencode", "--shim-dir"])
+            .arg(home.join("shims"))
+            .current_dir(&project),
+    );
+    let plugin = project.join(".opencode/plugins/ranon.ts");
+
+    let customer = serde_json::json!({ "first_name": "Jean", "last_name": "Dupont", "email": "jean.dupont@example.com", "plan": "pro" });
+    let result =
+        serde_json::json!({ "output": customer, "content": [{ "type": "text", "text": customer.to_string() }] });
+    let edit = serde_json::json!({ "output": "Jean Dupont", "content": [{ "type": "text", "text": "Jean Dupont" }] });
+    let events = serde_json::json!([
+        { "when": "after", "tool": "crm_get_customer", "status": "completed", "input": { "id": 42 }, "result": result },
+        { "when": "after", "tool": "edit", "status": "completed", "input": {}, "result": edit },
+    ]);
+    let fired = opencode_tool_events(&home, &plugin, &events);
+    // both forms of an MCP result are masked: Code Mode reuses the structured `output`
+    let mcp = fired[0]["result"].to_string();
+    assert_hidden(&mcp);
+    assert!(fired[0]["result"]["output"]["email"].as_str().unwrap().starts_with("EMAIL_"), "{mcp}");
+    assert_eq!(fired[0]["result"]["output"]["plan"], "pro");
+    // OpenCode's own tools are left alone
+    assert_eq!(fired[1]["result"], edit);
+
+    // a token written by the model reaches the MCP server as the real value
+    let token = fired[0]["result"]["output"]["email"].as_str().unwrap().to_string();
+    let events = serde_json::json!([{ "when": "before", "tool": "crm_find_customer", "input": { "email": token } }]);
+    let fired = opencode_tool_events(&home, &plugin, &events);
+    assert_eq!(fired[0]["input"]["email"], "jean.dupont@example.com");
+
+    // without the ranon binary, the MCP result is hidden rather than passed raw
+    let text = std::fs::read_to_string(&plugin).unwrap();
+    let broken = text
+        .lines()
+        .map(|line| if line.starts_with("const ranon = ") { "const ranon = \"/nonexistent/ranon\"" } else { line })
+        .collect::<Vec<_>>()
+        .join("\n");
+    std::fs::write(&plugin, broken).unwrap();
+    let events = serde_json::json!([{ "when": "after", "tool": "crm_get_customer", "status": "completed", "input": {}, "result": result }]);
+    let fired = opencode_tool_events(&home, &plugin, &events);
+    let hidden = fired[0]["result"].to_string();
+    assert_hidden(&hidden);
+    assert!(hidden.contains("output hidden") && fired[0]["result"].get("output").is_none(), "{hidden}");
 }
 
 /// `program` from the PATH. Missing, the test is skipped, unless `env` is set (in CI) and then it fails.

@@ -54,12 +54,12 @@ ranon is a filter, not a security boundary: a name typed in a `where` clause, or
 | Agent | Install | Shell commands | MCP tools |
 |---|---|---|---|
 | **Claude Code** | `ranon init -g` | hook | hook, with write-back |
-| **OpenCode** | `ranon init -g --agent opencode` | PATH shim | **not masked** |
+| **OpenCode** | `ranon init -g --agent opencode` | PATH shim | plugin, with write-back |
 | **Codex CLI** | `ranon init -g --agent codex` | PATH shim | **not masked** |
 | **Cursor** | `ranon init -g --agent cursor` | command rewritten | hook |
 | Any other agent | `ranon init --agent shims` | PATH shim | **not masked** |
 
-Claude Code and Cursor let a hook mask MCP results. Elsewhere ranon sees shell commands only, so an MCP server that returns personal data reaches the model in clear: use it from Claude Code or Cursor, or leave it off.
+Claude Code, Cursor and OpenCode let a hook mask MCP results. In Codex CLI and other agents ranon sees shell commands only, so an MCP server that returns personal data reaches the model in clear: use it from one of the first three, or leave it off.
 
 > What each agent's hooks allow, and what `ranon init` writes: **[Agents](docs/agents.md)**
 
@@ -68,7 +68,7 @@ Claude Code and Cursor let a hook mask MCP results. Elsewhere ranon sees shell c
 | | |
 |---|---|
 | [Getting started](docs/getting-started.md) | `ranon init` options, name dictionary, `ranon doctor`, a prompt that has your agent check the setup |
-| [Agents](docs/agents.md) | Claude Code and Cursor hooks, PATH shims for OpenCode and Codex |
+| [Agents](docs/agents.md) | Claude Code and Cursor hooks, OpenCode plugin, PATH shims for Codex |
 | [How it works](docs/how-it-works.md) | the masking passes, how names are recognized, tokens, local state and `ranon forget` |
 | [Rules](docs/rules.md) | built-in rules, your own rules per source, `ranon rules` |
 | [Limits](docs/limits.md) | what goes through |

@@ -22,7 +22,10 @@ fn psql_tuples_only(command: &str) -> bool {
 const DATA_FILES: &[&str] = &["csv", "tsv", "json", "jsonl", "ndjson", "txt", "log", "xml", "html", "sql"];
 
 fn reads_data_file(payload: &Value) -> bool {
-    let path = payload["tool_input"]["file_path"].as_str().unwrap_or_default();
+    is_data_file(payload["tool_input"]["file_path"].as_str().unwrap_or_default())
+}
+
+pub(crate) fn is_data_file(path: &str) -> bool {
     std::path::Path::new(path)
         .extension()
         .and_then(|ext| ext.to_str())

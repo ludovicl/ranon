@@ -359,28 +359,74 @@ fn cursor(text: &str, uninstall: bool) -> Result<String, String> {
 
 // --- OpenCode ---------------------------------------------------------------------------------------------
 
-fn opencode(shim_dir: &Path) -> String {
-    let dir = serde_json::to_string(&shim_dir.display().to_string()).unwrap();
-    format!(
-        r#"{PLUGIN_MARK}: puts the ranon shims first in the PATH of the agent's shell commands
-import {{ existsSync }} from "node:fs"
+/// The plugin: shims first in the PATH of shell commands, and every tool call sent to `ranon hook opencode`,
+/// which masks results and puts real values back in MCP inputs. OpenCode's own tools other than `read` are
+/// skipped here, so that a missing ranon binary hides only the results it should have masked.
+const OPENCODE_PLUGIN: &str = r#"__MARK__: masks tool results (MCP tools, Code Mode, data files) and puts the ranon shims first in the PATH of the agent's shell commands
+import { existsSync } from "node:fs"
+import { spawnSync } from "node:child_process"
 
-const shims = {dir}
+const shims = __SHIMS__
+const ranon = __RANON__
+const builtIn = new Set(__BUILT_IN__)
+const skipped = (tool: string) => builtIn.has(tool) && tool !== "read"
 
-export default {{
+function call(payload: unknown): any {
+  const run = spawnSync(ranon, ["hook", "opencode"], { input: JSON.stringify(payload), encoding: "utf8", maxBuffer: 256 * 1024 * 1024 })
+  if (run.error || run.status !== 0) throw new Error(run.error ? "ranon not found" : `ranon exited with ${run.status}`)
+  return JSON.parse(run.stdout)
+}
+
+// in place: OpenCode reads the object it passed to the hook
+function replace(target: Record<string, unknown>, value: Record<string, unknown>) {
+  for (const key of Object.keys(target)) delete target[key]
+  Object.assign(target, value)
+}
+
+export default {
   id: "ranon",
-  async setup(ctx: any) {{
-    if (!existsSync(shims)) return
-    await ctx.shell.hook("create.before", (event: {{ env?: Record<string, string | undefined> }}) => {{
-      if (!event.env) return
-      const path = event.env.PATH ?? process.env.PATH ?? ""
-      if (path.split(":").includes(shims)) return
-      event.env.PATH = `${{shims}}:${{path}}`
-    }})
-  }},
-}}
-"#
-    )
+  async setup(ctx: any) {
+    if (existsSync(shims)) {
+      await ctx.shell.hook("create.before", (event: { env?: Record<string, string | undefined> }) => {
+        if (!event.env) return
+        const path = event.env.PATH ?? process.env.PATH ?? ""
+        if (path.split(":").includes(shims)) return
+        event.env.PATH = `${shims}:${path}`
+      })
+    }
+    if (!ctx.tool?.hook) return
+    await ctx.tool.hook("execute.before", (event: any) => {
+      if (skipped(event.tool) || !event.input || typeof event.input !== "object") return
+      try {
+        const answer = call({ event: "before", tool: event.tool, input: event.input })
+        if (answer.input) replace(event.input, answer.input)
+      } catch {
+        // the input keeps its tokens: nothing real reaches the model
+      }
+    })
+    await ctx.tool.hook("execute.after", (event: any) => {
+      if (skipped(event.tool) || event.status !== "completed" || !event.result) return
+      let answer: any
+      try {
+        answer = call({ event: "after", tool: event.tool, input: event.input, result: event.result })
+      } catch (error) {
+        // fail closed: hide the result rather than pass it raw
+        answer = { result: { content: [{ type: "text", text: `[ranon: masking failed (${(error as Error).message}), output hidden]` }] } }
+      }
+      if (answer.result) replace(event.result, answer.result)
+    })
+  },
+}
+"#;
+
+fn opencode(shim_dir: &Path) -> String {
+    let ranon = std::env::current_exe().map(|exe| exe.display().to_string()).unwrap_or_else(|_| "ranon".to_string());
+    let json = |text: &str| serde_json::to_string(text).unwrap();
+    OPENCODE_PLUGIN
+        .replace("__MARK__", PLUGIN_MARK)
+        .replace("__SHIMS__", &json(&shim_dir.display().to_string()))
+        .replace("__RANON__", &json(&ranon))
+        .replace("__BUILT_IN__", &serde_json::to_string(crate::opencode::BUILT_IN).unwrap())
 }
 
 // --- Codex CLI --------------------------------------------------------------------------------------------
