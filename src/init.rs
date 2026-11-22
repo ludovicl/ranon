@@ -21,6 +21,9 @@ const GUARD_COMMAND: &str =
     "command -v ranon >/dev/null 2>&1 || { echo 'ranon is missing: output would not be masked' >&2; exit 2; }";
 const GUARD_MARK: &str = "ranon is missing";
 const PLUGIN_MARK: &str = "// installed by `ranon init`";
+/// Codex runs the hook through a shell: if ranon is missing, exit 2 makes Codex replace the result with an error.
+const CODEX_COMMAND: &str = "ranon hook codex || { echo 'ranon is missing or failed: output hidden' >&2; exit 2; }";
+const CODEX_MATCHER: &str = "^mcp__.*";
 
 #[derive(Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
 pub enum Agent {
@@ -129,6 +132,9 @@ pub fn run(options: &Options) -> Result<(), String> {
         println!("\nNext: restart the agent session, then check from it that a query returning a name shows a token.");
         if options.agent == Agent::Claude {
             println!("`ranon doctor` checks the hooks from the project root.");
+        }
+        if options.agent == Agent::Codex {
+            println!("Codex runs a new hook only once you trust it: open `/hooks` in Codex and trust the ranon hook.");
         }
         println!("Optional, to mask names in free text: `ranon dict build --sql \"select first_name from users …\"`.");
     }
@@ -477,7 +483,15 @@ fn codex(text: &str, shim_dir: &Path, state: &Path, uninstall: bool) -> Result<S
                 doc["sandbox_workspace_write"].as_table_like_mut().unwrap().remove("writable_roots");
             }
         }
-        for key in ["shell_environment_policy", "sandbox_workspace_write"] {
+        if let Some(entries) =
+            doc.get_mut("hooks").and_then(|hooks| hooks.get_mut("PostToolUse")).and_then(Item::as_array_of_tables_mut)
+        {
+            entries.retain(|entry| !runs_codex_hook(entry));
+            if entries.is_empty() {
+                doc["hooks"].as_table_like_mut().unwrap().remove("PostToolUse");
+            }
+        }
+        for key in ["shell_environment_policy", "sandbox_workspace_write", "hooks"] {
             if doc.get(key).and_then(Item::as_table_like).is_some_and(|table| table.is_empty()) {
                 doc.remove(key);
             }
@@ -511,7 +525,40 @@ fn codex(text: &str, shim_dir: &Path, state: &Path, uninstall: bool) -> Result<S
     if !roots.iter().any(|root| root.as_str() == Some(state.as_str())) {
         roots.push(state);
     }
+
+    // MCP results: a PostToolUse hook, see src/codex.rs
+    let hooks = doc.entry("hooks").or_insert_with(|| Item::Table(Table::new()));
+    let hooks = hooks.as_table_like_mut().ok_or("hooks is not a table")?;
+    if hooks.get("PostToolUse").is_none() {
+        hooks.insert("PostToolUse", Item::ArrayOfTables(toml_edit::ArrayOfTables::new()));
+    }
+    let entries = hooks
+        .get_mut("PostToolUse")
+        .and_then(Item::as_array_of_tables_mut)
+        .ok_or("hooks.PostToolUse is not an array of tables")?;
+    if !entries.iter().any(runs_codex_hook) {
+        let mut handler = InlineTable::new();
+        handler.insert("type", "command".into());
+        handler.insert("command", CODEX_COMMAND.into());
+        handler.insert("timeout", 60.into());
+        let mut entry = Table::new();
+        entry.insert("matcher", value(CODEX_MATCHER));
+        entry.insert("hooks", value(Array::from_iter([toml_edit::Value::InlineTable(handler)])));
+        entries.push(entry);
+    }
     Ok(doc.to_string())
+}
+
+fn runs_codex_hook(entry: &toml_edit::Table) -> bool {
+    entry.get("hooks").and_then(toml_edit::Item::as_array).is_some_and(|handlers| {
+        handlers.iter().any(|handler| {
+            handler
+                .as_inline_table()
+                .and_then(|h| h.get("command"))
+                .and_then(|c| c.as_str())
+                .is_some_and(|c| c.contains("ranon hook codex"))
+        })
+    })
 }
 
 // --- show -------------------------------------------------------------------------------------------------
@@ -601,6 +648,9 @@ mod tests {
         let path = doc["shell_environment_policy"]["set"]["PATH"].as_str().unwrap();
         assert!(path.starts_with("/h/.local/share/ranon/shims:"), "{path}");
         assert_eq!(doc["sandbox_workspace_write"]["writable_roots"][0].as_str(), Some("/h/.local/state/ranon"));
+        let hook = &doc["hooks"]["PostToolUse"][0];
+        assert_eq!(hook["matcher"].as_str(), Some(CODEX_MATCHER));
+        assert_eq!(hook["hooks"][0]["command"].as_str(), Some(CODEX_COMMAND));
         assert_eq!(codex(&added, shims, state, false).unwrap(), added, "a second run changes nothing");
         assert_eq!(codex(&added, shims, state, true).unwrap().trim(), mine.trim());
     }

@@ -55,11 +55,11 @@ ranon is a filter, not a security boundary: a name typed in a `where` clause, or
 |---|---|---|---|
 | **Claude Code** | `ranon init -g` | hook | hook, with write-back |
 | **OpenCode** | `ranon init -g --agent opencode` | PATH shim | plugin, with write-back |
-| **Codex CLI** | `ranon init -g --agent codex` | PATH shim | **not masked** |
+| **Codex CLI** | `ranon init -g --agent codex` | PATH shim | hook, shown as a failed call |
 | **Cursor** | `ranon init -g --agent cursor` | command rewritten | hook |
 | Any other agent | `ranon init --agent shims` | PATH shim | **not masked** |
 
-Claude Code, Cursor and OpenCode let a hook mask MCP results. In Codex CLI and other agents ranon sees shell commands only, so an MCP server that returns personal data reaches the model in clear: use it from one of the first three, or leave it off.
+Claude Code, Cursor, OpenCode and Codex CLI let a hook mask MCP results. Codex cannot rewrite a result yet, so ranon blocks it and hands back its masked version, which the model reads as a failed call with the masked result as the message. In other agents ranon sees shell commands only: an MCP server that returns personal data reaches the model in clear.
 
 > What each agent's hooks allow, and what `ranon init` writes: **[Agents](docs/agents.md)**
 
@@ -68,7 +68,7 @@ Claude Code, Cursor and OpenCode let a hook mask MCP results. In Codex CLI and o
 | | |
 |---|---|
 | [Getting started](docs/getting-started.md) | `ranon init` options, name dictionary, `ranon doctor`, a prompt that has your agent check the setup |
-| [Agents](docs/agents.md) | Claude Code and Cursor hooks, OpenCode plugin, PATH shims for Codex |
+| [Agents](docs/agents.md) | Claude Code, Cursor and Codex hooks, OpenCode plugin, PATH shims |
 | [How it works](docs/how-it-works.md) | the masking passes, how names are recognized, tokens, local state and `ranon forget` |
 | [Rules](docs/rules.md) | built-in rules, your own rules per source, `ranon rules` |
 | [Limits](docs/limits.md) | what goes through |

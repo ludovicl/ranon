@@ -8,7 +8,7 @@ What ranon can mask depends on what the harness lets a hook do. Claude Code lets
 |---|---|---|---|---|
 | Claude Code | yes, hook | yes, hook | yes, `PreToolUse` | `ranon init`, [details](#claude-code) |
 | OpenCode | yes, PATH shim | yes, plugin | yes, without approval | `ranon init --agent opencode`, [details](#opencode) |
-| Codex CLI | yes, PATH shim | no | no | `ranon init --agent codex`, [details](#codex-cli) |
+| Codex CLI | yes, PATH shim | yes, hook (shown as a failed call) | no | `ranon init --agent codex`, [details](#codex-cli) |
 | Cursor | yes, command rewritten | yes, hook | yes, without approval | `ranon init --agent cursor`, [details](#cursor) |
 
 ## Claude Code
@@ -73,11 +73,22 @@ set = { PATH = "/home/you/.local/share/ranon/shims:/usr/local/bin:/usr/bin:/bin"
 [sandbox_workspace_write]
 # ranon must save its token map, or it hides every output holding a new value
 writable_roots = ["/home/you/.local/state/ranon"]
+
+[[hooks.PostToolUse]]
+# MCP results; exit 2 without ranon makes Codex drop the result
+matcher = "^mcp__.*"
+hooks = [{ type = "command", command = "ranon hook codex || { echo 'ranon is missing or failed: output hidden' >&2; exit 2; }", timeout = 60 }]
 ```
+
+Codex runs a hook it has not seen only once you trust it: open `/hooks` in Codex and trust the ranon hook, then again after it changes.
 
 `set` replaces the variable rather than prepending to it, so copy your current `PATH` after the shims (`echo "$HOME/.local/share/ranon/shims:$PATH"`). Without the writable root, the default `workspace-write` sandbox stops ranon from saving `map.tsv`: the command then prints `ranon: cannot save token map …, output hidden` instead of its output. That is safe but useless. The sandbox also blocks network access by default, so `psql` or `heroku` need it allowed as well.
 
-Codex hooks cannot stand in for the shim: a `PostToolUse` hook can block a result or add context, but not rewrite it (`updatedMCPToolOutput` is parsed and not supported). MCP output therefore stays in clear. Checked with Codex CLI 0.153.4: through the shims, a table of names and emails reached the model as tokens, and the new values were saved.
+Codex hooks cannot rewrite a tool result (`updatedMCPToolOutput` is parsed and not supported), but `decision: "block"` replaces the result with the hook's reason. So when an MCP result holds personal data, `ranon hook codex` blocks it and gives its masked text as the reason, after a line telling the model that the call succeeded. The model reads it as a failed call (`Script error:` in Code Mode) and uses the masked result; a result with nothing to mask goes through untouched. Codex still keeps the raw result in its local session files (`~/.codex/sessions`), never in what it sends to the model.
+
+No real values are put back in MCP inputs: Codex accepts a rewritten input only with `permissionDecision: "allow"`, which would skip the approval it asks for MCP calls. The MCP server receives tokens.
+
+Checked with Codex CLI 0.153.4 (shims: a table of names and emails reached the model as tokens) and 0.171.0 (hook: two MCP calls in a real session, the model read only tokens; with ranon missing, the result was hidden).
 
 ### Cursor
 

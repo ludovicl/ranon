@@ -90,7 +90,7 @@ does not see it.
 
 Step 6 is where a setup gets safe: field names differ in every company, and only real output shows the ones the built-in rules miss. The agent will see the values of the fields that are not covered yet, so start with a single row.
 
-On another harness, step 4 becomes `ranon init --agent opencode` or `--agent codex`. In OpenCode a plugin masks MCP results and puts real values back in MCP inputs, without asking for approval; in Codex a PATH shim replaces the hook and only shell commands are masked (see [Agents](agents.md)). The rest of the prompt holds as it is.
+On another harness, step 4 becomes `ranon init --agent opencode` or `--agent codex`. In OpenCode a plugin masks MCP results and puts real values back in MCP inputs, without asking for approval; in Codex a PATH shim masks shell commands and a hook masks MCP results, with no real values put back before a write (see [Agents](agents.md)). The rest of the prompt holds as it is.
 
 ## Manual use
 

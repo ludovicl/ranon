@@ -14,7 +14,7 @@ ranon plugs in at one of three places:
 
 | Mode | How | Covers |
 |---|---|---|
-| **Agent hook** | `ranon hook claude` as a Claude Code `PostToolUse` hook, `ranon hook cursor`, or `ranon hook opencode` called by the OpenCode plugin | Shell output of `psql`, `heroku run`, `heroku logs`, `stripe` (and any command you add), MCP tool results, data files the agent reads |
+| **Agent hook** | `ranon hook claude` as a Claude Code `PostToolUse` hook, `ranon hook cursor`, `ranon hook codex`, or `ranon hook opencode` called by the OpenCode plugin | Shell output of `psql`, `heroku run`, `heroku logs`, `stripe` (and any command you add), MCP tool results, data files the agent reads |
 | **PATH shim** | `ranon init --agent opencode` or `codex` creates `psql → ranon` and puts that directory first in the agent's PATH | Any agent harness, including output redirected to a file |
 | **Filter** | `ranon psql …`, `… \| ranon mask` | Manual use and scripts |
 

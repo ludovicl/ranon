@@ -330,6 +330,64 @@ fn required(program: &str, env: &str) -> Option<PathBuf> {
     found
 }
 
+// --- Codex CLI hook -----------------------------------------------------------------------------
+// Payload shaped like the ones Codex 0.171.0 sent in a real session with a local MCP server (22/11/2026).
+
+fn codex_hook(home: &Path, payload: &serde_json::Value) -> serde_json::Value {
+    let mut child = command(BIN, home)
+        .args(["hook", "codex"])
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    use std::io::Write;
+    child.stdin.take().unwrap().write_all(payload.to_string().as_bytes()).unwrap();
+    let out = child.wait_with_output().unwrap();
+    assert!(out.status.success());
+    serde_json::from_slice(&out.stdout).unwrap()
+}
+
+#[test]
+fn codex_mcp_results_come_back_masked_as_block_feedback() {
+    let home = home();
+    let customer =
+        r#"{"id":42,"first_name":"Jean","last_name":"Dupont","email":"jean.dupont@example.com","plan":"pro"}"#;
+    let payload = serde_json::json!({
+        "hook_event_name": "PostToolUse", "tool_name": "mcp__crm__get_customer", "tool_use_id": "call_1",
+        "tool_input": { "id": 42 }, "tool_response": { "content": [{ "type": "text", "text": customer }] },
+    });
+    let out = codex_hook(&home, &payload);
+    assert_eq!(out["decision"], "block");
+    let reason = out["reason"].as_str().unwrap();
+    assert_hidden(reason);
+    assert!(
+        reason.contains("the call succeeded") && reason.contains("\"plan\":\"pro\"") && reason.contains("EMAIL_"),
+        "{reason}"
+    );
+
+    // nothing to mask, or not an MCP tool: the result goes through untouched
+    let plain = serde_json::json!({ "hook_event_name": "PostToolUse", "tool_name": "mcp__crm__ping",
+        "tool_response": { "content": [{ "type": "text", "text": "pong" }] } });
+    assert_eq!(codex_hook(&home, &plain), serde_json::json!({}));
+    let shell =
+        serde_json::json!({ "hook_event_name": "PostToolUse", "tool_name": "Bash", "tool_response": "Jean Dupont" });
+    assert_eq!(codex_hook(&home, &shell), serde_json::json!({}));
+}
+
+#[test]
+fn codex_hook_command_exits_2_without_ranon() {
+    // the command `ranon init` writes, run by a shell that cannot find ranon: exit 2 makes Codex drop the result
+    let home = home();
+    let settings = stdout(
+        command(BIN, &home).args(["init", "--agent", "codex", "--dry-run", "--shim-dir"]).arg(home.join("shims")),
+    );
+    let line = settings.lines().find(|line| line.contains("ranon hook codex")).expect(&settings);
+    let hook = line.split("command = \"").nth(1).unwrap().split("\", timeout").next().unwrap();
+    let out = Command::new("/bin/sh").args(["-c", hook]).env("PATH", "/usr/bin:/bin").output().unwrap();
+    assert_eq!(out.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&out.stderr).contains("output hidden"));
+}
+
 // --- Cursor -------------------------------------------------------------------------------------
 // Cursor is not installed in CI: the payloads follow https://cursor.com/docs/agent/hooks (15/11/2026).
 

@@ -3,7 +3,7 @@
 //! Like rtk, one binary plays several roles:
 //! - `ranon psql …` (or a `psql` symlink to ranon placed first in the agent's PATH) runs the real
 //!   command and masks its output, whatever the agent harness;
-//! - `ranon hook claude`, `ranon hook cursor` and `ranon hook opencode` are agent hooks;
+//! - `ranon hook claude`, `cursor`, `opencode` and `codex` are agent hooks;
 //! - `ranon mask` / `ranon unmask` filter stdin;
 //! - `ranon dict build` hashes the person names of your own database to catch them in free text;
 //! - `ranon doctor` checks the setup, `ranon forget` drops the real values kept for unmasking.
@@ -11,6 +11,7 @@
 #[cfg(not(unix))]
 compile_error!("ranon supports Unix-like systems only (Linux, macOS)");
 
+mod codex;
 mod cursor;
 mod doctor;
 mod hook;
@@ -41,7 +42,7 @@ enum Cmd {
     Mask,
     /// Restore real values in stdin from the local token map
     Unmask,
-    /// Agent hook: `claude` (Claude Code), `cursor` or `opencode`
+    /// Agent hook: `claude` (Claude Code), `cursor`, `opencode` or `codex`
     Hook { agent: String },
     /// Manage the hashed dictionary of person names
     Dict {
@@ -123,6 +124,7 @@ fn main() {
         Cmd::Hook { agent } if agent == "claude" => hook::claude(),
         Cmd::Hook { agent } if agent == "cursor" => cursor::run(),
         Cmd::Hook { agent } if agent == "opencode" => opencode::run(),
+        Cmd::Hook { agent } if agent == "codex" => codex::run(),
         Cmd::Hook { agent } => fail(&format!("unsupported agent `{agent}`")),
         Cmd::Dict { action: DictAction::Stats } => dict_stats(),
         Cmd::Dict { action: DictAction::Build { stdin, db_url_env, sql, replace } } => {
