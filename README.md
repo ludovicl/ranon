@@ -23,7 +23,7 @@ brew install ludovicl/tap/ranon
 ranon init -g       # Claude Code; every other agent: see "Works in your agent"
 ```
 
-Without Homebrew: a static binary from [Releases](https://github.com/ludovicl/ranon/releases/latest), or `cargo install --git https://github.com/ludovicl/ranon` (Rust 1.88+).
+Without Homebrew: a static binary from [Releases](https://github.com/ludovicl/ranon/releases/latest), or `cargo install ranon` (Rust 1.88+).
 
 Restart your agent. That's it: when it runs `psql`, `heroku run` or an MCP tool, it reads tokens instead of names and emails. Nothing to learn, nothing to call.
 
