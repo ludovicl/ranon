@@ -1,10 +1,10 @@
 [package]
 name = "ranon"
-version = "0.3.0"
+version = "0.4.0"
 edition = "2024"
 rust-version = "1.88"
 description = "Masks personal data in command output before it reaches an LLM agent"
-license = "MIT OR Apache-2.0"
+license = "BUSL-1.1"
 repository = "https://github.com/ludovicl/ranon"
 readme = "README.md"
 homepage = "https://ranon.lrds.app"

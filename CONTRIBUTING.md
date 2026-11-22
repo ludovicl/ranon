@@ -14,4 +14,4 @@ cargo test
 
 CI runs the same three on Linux and macOS.
 
-By contributing, you agree that your work is licensed under MIT or Apache-2.0, like the rest of ranon.
+By contributing, you agree that your work is licensed under the same terms as ranon ([Business Source License 1.1](LICENSE)), and that Ludovic Lardies may also distribute it under a commercial license.

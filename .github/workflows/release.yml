@@ -34,7 +34,7 @@ jobs:
         run: |
           name="ranon-${GITHUB_REF_NAME}-${{ matrix.target }}"
           mkdir "$name"
-          cp "target/${{ matrix.target }}/release/ranon" README.md LICENSE-MIT LICENSE-APACHE "$name/"
+          cp "target/${{ matrix.target }}/release/ranon" README.md LICENSE "$name/"
           tar -czf "$name.tar.gz" "$name"
           shasum -a 256 "$name.tar.gz" > "$name.tar.gz.sha256"
       - uses: actions/upload-artifact@v4

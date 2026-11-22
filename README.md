@@ -6,7 +6,7 @@
 
 **Masks personal data in command output before it reaches an LLM agent.**
 
-ranon stands for **R**ust **anon**ymizer.
+**ranon: real data, anonymized.** Your agent works on the real thing; the model never sees who it is about.
 
 Coding agents are most useful when they can query real systems: a read replica, a production console, an API. That output often holds names, emails, IBANs or addresses that should not leave your machine. ranon sits between the command and the agent and replaces each sensitive value with a stable pseudonym:
 
@@ -91,4 +91,10 @@ Integration tests ([`tests/cli.rs`](tests/cli.rs)) run the real binary against s
 
 ## License
 
-Licensed under either of [Apache License 2.0](LICENSE-APACHE) or [MIT license](LICENSE-MIT), at your option.
+Source available under the [Business Source License 1.1](LICENSE):
+
+- **Free** for individuals, and for organizations where up to **3 people** use ranon.
+- **Beyond 3 users** in an organization, a commercial license is needed: write to ranon@lardies.fr.
+- Each version becomes open source under the Apache License 2.0 four years after its release.
+
+Versions up to 0.3.0 remain under MIT or Apache-2.0.
