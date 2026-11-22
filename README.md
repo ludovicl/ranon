@@ -4,6 +4,8 @@
 
 **Masks personal data in command output before it reaches an LLM agent.**
 
+ranon stands for **R**ust **anon**ymizer.
+
 Coding agents are most useful when they can query real systems: a read replica, a production console, an API. That output often holds names, emails, IBANs or addresses that should not leave your machine. ranon sits between the command and the agent and replaces each sensitive value with a stable pseudonym:
 
 ```text
