@@ -3,10 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ranon · mask personal data before your agent reads it</title>
-<meta name="description" content="ranon masks names, emails, IBANs and addresses in command output before it reaches an LLM coding agent. One Rust binary, local only, fails closed.">
-<meta property="og:title" content="ranon · mask personal data before your agent reads it">
-<meta property="og:description" content="Let your coding agent query production. ranon replaces personal data with stable pseudonyms before the model sees it.">
+<title>ranon · use frontier AI on customer data, keep the personal data home</title>
+<meta name="description" content="Let your teams use Claude, GPT and other frontier AI models on customer data without sending them personal data. ranon replaces names, emails and IBANs with pseudonyms on your machines, before anything reaches the model provider. Built for GDPR.">
+<meta property="og:title" content="ranon · use frontier AI on customer data, keep the personal data home">
+<meta property="og:description" content="Claude, GPT and the best AI models work on your real data. Personal data never reaches them. Built for GDPR.">
 <meta property="og:url" content="https://ranon.app/">
 <meta property="og:type" content="website">
 <meta property="og:image" content="https://ranon.app/og.png">
@@ -213,17 +213,17 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 10px 24px; justify-content: 
 
   <div class="hero">
     <div>
-      <span class="eyebrow">Source available · Rust · free up to 3 users</span>
-      <h1>Your agent reads prod.<br><em>Your users' names stay home.</em></h1>
-      <p class="lede">ranon, for <span class="acr"><b>r</b>eal data, <b>anon</b>ymized</span>, sits between your coding agent and the commands it runs. Names, emails, IBANs and addresses become stable pseudonyms before the model sees them. The agent still joins, counts and debugs. The personal data never leaves your machine.</p>
+      <span class="eyebrow">Built for GDPR · Claude, GPT, Gemini · free up to 3 users</span>
+      <h1>Frontier AI on your customer data.<br><em>Personal data stays home.</em></h1>
+      <p class="lede">Your teams want Claude, GPT and the other frontier models, run by US companies. Your customer data is under GDPR. ranon runs on each machine, between the AI agent and your tools: names, emails, IBANs and addresses become pseudonyms before anything leaves for the model provider. The agent still works on your real data. The personal data stays in your company. <span class="acr">ranon: <b>r</b>eal data, <b>anon</b>ymized.</span></p>
       <div class="cta">
-        <a class="btn btn-primary" href="#install">Install in two commands</a>
-        <a class="btn" href="https://github.com/ludovicl/ranon">View on GitHub</a>
+        <a class="btn btn-primary" href="#install">Try it free</a>
+        <a class="btn" href="#pricing">Pricing for teams</a>
       </div>
       <div class="meta">
+        <span>Personal data stays on your machines</span>
         <span>Claude Code, Cursor, Codex, OpenCode</span>
-        <span>psql, Heroku, Stripe, MCP</span>
-        <span>Fails closed</span>
+        <span>No telemetry</span>
       </div>
     </div>
 
@@ -249,21 +249,21 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 10px 24px; justify-content: 
 <section class="alt" id="problem">
   <div class="wrap">
     <p class="kicker">// the problem</p>
-    <h2>The best context for an agent is real data. That is also the riskiest.</h2>
-    <p class="sub">Coding agents are most useful when they can query a read replica, open a production console or call an API. That output is full of customers: names, emails, phone numbers, bank details. Every line goes to a model provider. ranon lets you keep the access and drop the exposure.</p>
+    <h2>The best AI models are American. Your customer data is under GDPR.</h2>
+    <p class="sub">AI agents are most useful on real data: a production database, Stripe, Notion, Slack, support tickets. Today every line they read goes to the model provider, outside the EU, with your customers' names in it. Banning AI costs your teams their best tool. Allowing it without control is the risk your DPO will flag. ranon takes the personal data out of what the model sees, so you can say yes.</p>
 
     <div class="steps">
       <div class="step">
-        <h3>Same value, same token</h3>
-        <p>Jean is <span class="mono">PERSON_d86896</span> in every row and every command. The model can still group, join and spot the duplicate account.</p>
+        <h3>Personal data stays in your company</h3>
+        <p>Names, emails, phone numbers, IBANs and addresses become tokens like <span class="mono">PERSON_d86896</span> on the machine. The table that links them to real values never leaves it.</p>
       </div>
       <div class="step">
-        <h3>Useful fields stay readable</h3>
-        <p>Ids, amounts, statuses, dates and plans pass through. A Stripe customer's <span class="mono">name</span> is masked, a product's <span class="mono">name</span> is not.</p>
+        <h3>Your teams keep the best models</h3>
+        <p>No need to fall back on a weaker model to stay on the safe side. The agent still counts, joins and debugs on real data: the same value always gets the same token.</p>
       </div>
       <div class="step">
-        <h3>Real values come back locally</h3>
-        <p><span class="mono">ranon unmask</span> turns the model's answer back into real names, on your machine, from a map that never leaves it.</p>
+        <h3>Open code your DPO can check</h3>
+        <p>The code and the masking rules are public. Nothing is sent anywhere: no account, no server, no telemetry. If masking fails, the output is hidden rather than sent.</p>
       </div>
     </div>
   </div>
