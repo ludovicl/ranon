@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: A leak you can only show with real data
+    url: https://github.com/ludovicl/ranon/security/advisories/new
+    about: Report it privately. Never paste real personal data in a public issue.

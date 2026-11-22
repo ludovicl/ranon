@@ -1,0 +1,46 @@
+name: A value is not masked
+description: ranon let a name, email, IBAN or other personal value through
+labels: ["leak"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **This issue is public.** Replace every real value with a synthetic one (`Jean Dupont`, `jean@example.com`, `FR7630006000011234567890189`) and keep the shape of the output: column names, JSON keys, spacing.
+        If you cannot reproduce it without real data, report it privately instead: [security advisory](https://github.com/ludovicl/ranon/security/advisories/new).
+  - type: checkboxes
+    id: synthetic
+    attributes:
+      label: Data
+      options:
+        - label: Every value below is synthetic. Nothing comes from a real person.
+          required: true
+  - type: input
+    id: source
+    attributes:
+      label: Source
+      description: The command or MCP tool that produced the output
+      placeholder: "psql -c ..., heroku logs, Stripe MCP list_customers"
+    validations:
+      required: true
+  - type: textarea
+    id: sample
+    attributes:
+      label: Output sample
+      description: A synthetic output that reproduces the leak
+      render: text
+    validations:
+      required: true
+  - type: input
+    id: expected
+    attributes:
+      label: What should be masked
+      placeholder: "the customer_name column"
+    validations:
+      required: true
+  - type: input
+    id: setup
+    attributes:
+      label: ranon version and agent
+      description: "`ranon --version`, and Claude Code, Cursor, Codex, OpenCode or a pipe"
+    validations:
+      required: true

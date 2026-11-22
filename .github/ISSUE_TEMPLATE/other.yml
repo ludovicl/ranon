@@ -1,0 +1,17 @@
+name: Bug, question or idea
+description: "Something else: a crash, an install problem, a source ranon should support"
+body:
+  - type: markdown
+    attributes:
+      value: "**This issue is public.** Use synthetic values only in commands, logs and outputs."
+  - type: textarea
+    id: details
+    attributes:
+      label: What happened, or what you would like
+    validations:
+      required: true
+  - type: input
+    id: setup
+    attributes:
+      label: ranon version, OS and agent
+      placeholder: "ranon 0.1.0, macOS 15, Claude Code"
