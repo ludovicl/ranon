@@ -133,6 +133,19 @@ h3 { font-size: 19px; letter-spacing: -.01em; margin: 0 0 8px; }
 .promise .icon { width: 40px; height: 40px; border-radius: 10px; background: var(--accent-soft); color: var(--accent); display: grid; place-items: center; margin-bottom: 16px; }
 .promise p { margin: 0; color: var(--muted); font-size: 16px; }
 
+/* Pricing */
+.plans { display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; }
+@media (max-width: 1000px) { .plans { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 620px) { .plans { grid-template-columns: 1fr; } }
+.plan { padding: 26px; border-radius: 14px; background: var(--surface); border: 1px solid var(--border); display: flex; flex-direction: column; gap: 10px; }
+.plan.featured { border-color: var(--accent); }
+.plan .price { font-size: 30px; font-weight: 700; letter-spacing: -.02em; }
+.plan .price small { font-size: 15px; font-weight: 500; color: var(--muted); }
+.plan .who { color: var(--muted); font-size: 15px; margin: 0; }
+.plan ul { margin: 4px 0 0; padding-left: 18px; color: var(--muted); font-size: 15px; }
+.plan .btn { margin-top: auto; justify-content: center; }
+.plans-note { color: var(--muted); font-size: 15px; margin: 22px 0 0; }
+
 /* Tables */
 .table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 14px; background: var(--surface); }
 table { width: 100%; border-collapse: collapse; font-size: 15.5px; }
@@ -192,6 +205,7 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 10px 24px; justify-content: 
     <nav class="nav">
       <a class="hide-sm" href="#how">How it works</a>
       <a class="hide-sm" href="#limits">Limits</a>
+      <a class="hide-sm" href="#pricing">Pricing</a>
       <a href="https://github.com/ludovicl/ranon">GitHub</a>
     </nav>
   </header>
@@ -383,6 +397,45 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 10px 24px; justify-content: 
       <a class="btn btn-primary" href="https://github.com/ludovicl/ranon/blob/main/docs/getting-started.md">Getting started</a>
       <a class="btn" href="https://github.com/ludovicl/ranon">Star on GitHub</a>
     </div>
+  </div>
+</section>
+
+<section id="pricing">
+  <div class="wrap">
+    <p class="kicker">// pricing</p>
+    <h2>Free for you. A flat price for your team.</h2>
+    <p class="sub">The code is public under the Business Source License 1.1. Use it for free on your own or with up to 3 people; beyond that, your team needs a license. No telemetry: ranon never reports who uses it.</p>
+    <div class="plans">
+      <div class="plan">
+        <h3>Free</h3>
+        <div class="price">0 €</div>
+        <p class="who">Individuals, and organizations with up to 3 users.</p>
+        <ul><li>Every agent and every rule</li><li>Updates</li><li>Issues on GitHub</li></ul>
+        <a class="btn" href="#install">Install</a>
+      </div>
+      <div class="plan featured">
+        <h3>Team</h3>
+        <div class="price">49 € <small>/ month</small></div>
+        <p class="who">Up to 10 users in one organization.</p>
+        <ul><li>Commercial license</li><li>Updates</li><li>Email support</li></ul>
+        <a class="btn btn-primary" href="mailto:ranon@lardies.fr?subject=ranon%20Team">Get Team</a>
+      </div>
+      <div class="plan">
+        <h3>Business</h3>
+        <div class="price">149 € <small>/ month</small></div>
+        <p class="who">Up to 30 users in one organization.</p>
+        <ul><li>Commercial license</li><li>Updates</li><li>Priority support</li></ul>
+        <a class="btn" href="mailto:ranon@lardies.fr?subject=ranon%20Business">Get Business</a>
+      </div>
+      <div class="plan">
+        <h3>Enterprise</h3>
+        <div class="price">Custom</div>
+        <p class="who">More users, or a rollout your security team controls. Built with our first enterprise customers:</p>
+        <ul><li>Managed install, no manual trust</li><li>Audit log for your DPO</li><li>Shared company rules</li><li>GDPR report</li></ul>
+        <a class="btn" href="mailto:ranon@lardies.fr?subject=ranon%20Enterprise">Contact us</a>
+      </div>
+    </div>
+    <p class="plans-note">Prices excl. VAT, billed yearly. Write to <a href="mailto:ranon@lardies.fr">ranon@lardies.fr</a> for an invoice or a quote.</p>
   </div>
 </section>
 
