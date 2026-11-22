@@ -366,10 +366,10 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 10px 24px; justify-content: 
   <div class="wrap">
     <p class="kicker">// install &amp; forget</p>
     <h2>Two commands, then restart your agent.</h2>
-    <p class="sub">Linux or macOS, Rust 1.88+. <span class="mono">--dry-run</span> shows what changes before writing it, <span class="mono">--uninstall</span> removes it.</p>
+    <p class="sub">macOS or Linux. <span class="mono">--dry-run</span> shows what changes before writing it, <span class="mono">--uninstall</span> removes it.</p>
     <div class="term">
       <div class="term-bar"><i></i><i></i><i></i><b>~</b></div>
-<pre><span class="p">$</span> cargo install --git https://github.com/ludovicl/ranon
+<pre><span class="p">$</span> brew install ludovicl/tap/ranon   <span class="d"># or a binary from GitHub Releases</span>
 <span class="p">$</span> ranon init -g        <span class="d"># Claude Code; other agents: --agent cursor|codex|opencode</span>
 <span class="p">$</span> ranon doctor         <span class="d"># checks binary, rules, state and hooks</span></pre>
     </div>

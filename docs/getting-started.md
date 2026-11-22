@@ -1,7 +1,7 @@
 # Getting started
 
 ```sh
-cargo install --git https://github.com/ludovicl/ranon
+brew install ludovicl/tap/ranon  # or a binary from GitHub Releases
 ranon init -g                    # Claude Code, every project
 ranon init -g --agent opencode   # or OpenCode
 ranon init -g --agent codex      # or Codex CLI, from your own terminal
@@ -60,7 +60,7 @@ Rules for this whole task:
 
 Steps:
 1. Read the README of the repository, then install the binary:
-   cargo install --git https://github.com/ludovicl/ranon
+   brew install ludovicl/tap/ranon
    Check that `ranon --version` works.
 2. Build the name dictionary with the variable and the query above:
    ranon dict build --db-url-env <VARIABLE> --sql "<QUERY>"

@@ -1,3 +1,5 @@
+<p align="center"><img src="site/logo.svg" alt="ranon logo" width="96"></p>
+
 # ranon
 
 [![CI](https://github.com/ludovicl/ranon/actions/workflows/ci.yml/badge.svg)](https://github.com/ludovicl/ranon/actions/workflows/ci.yml)
@@ -8,22 +10,20 @@ ranon stands for **R**ust **anon**ymizer.
 
 Coding agents are most useful when they can query real systems: a read replica, a production console, an API. That output often holds names, emails, IBANs or addresses that should not leave your machine. ranon sits between the command and the agent and replaces each sensitive value with a stable pseudonym:
 
-```text
- id |  first_name   |   last_name   |     email     | organisation_name
-----+---------------+---------------+---------------+-------------------
- 42 | PERSON_d86896 | PERSON_55fc2c | EMAIL_d2f401  | ORG_87d061
-```
+![psql output before and after ranon](docs/demo.gif)
 
 Inspired by [rtk](https://github.com/rtk-ai/rtk): one small binary that works as an agent hook, a command proxy or a stdin filter.
 
 ## Install & forget
 
-Linux or macOS, with Rust 1.88+:
+macOS or Linux:
 
 ```sh
-cargo install --git https://github.com/ludovicl/ranon
+brew install ludovicl/tap/ranon
 ranon init -g       # Claude Code; every other agent: see "Works in your agent"
 ```
+
+Without Homebrew: a static binary from [Releases](https://github.com/ludovicl/ranon/releases/latest), or `cargo install --git https://github.com/ludovicl/ranon` (Rust 1.88+).
 
 Restart your agent. That's it: when it runs `psql`, `heroku run` or an MCP tool, it reads tokens instead of names and emails. Nothing to learn, nothing to call.
 
