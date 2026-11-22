@@ -75,6 +75,10 @@ Claude Code and Cursor let a hook mask MCP results. Elsewhere ranon sees shell c
 
 Repository references: [AGENTS.md](AGENTS.md) · [SECURITY.md](SECURITY.md)
 
+## Feedback
+
+Questions, ideas or a command ranon should mask: [open an issue](https://github.com/ludovicl/ranon/issues/new) with synthetic values only. A leak (real data that goes through unmasked) is reported privately: see [SECURITY.md](SECURITY.md).
+
 ## Development
 
 ```sh
