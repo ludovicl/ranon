@@ -59,7 +59,7 @@ ranon is a filter, not a security boundary: a name typed in a `where` clause, or
 | **Cursor** | `ranon init -g --agent cursor` | command rewritten | hook |
 | Any other agent | `ranon init --agent shims` | PATH shim | **not masked** |
 
-Claude Code, Cursor, OpenCode and Codex CLI let a hook mask MCP results. Codex cannot rewrite a result yet, so ranon blocks it and hands back its masked version, which the model reads as a failed call with the masked result as the message. In other agents ranon sees shell commands only: an MCP server that returns personal data reaches the model in clear.
+Claude Code, Cursor, OpenCode and Codex CLI let a hook mask MCP results. Codex cannot rewrite a result yet, so ranon blocks it and hands back its masked version, which the model reads as a failed call with the masked result as the message. Codex runs the hook only once you trust it (`/hooks`, or Settings > Hooks in the desktop app): until then, MCP results go through in clear. In other agents ranon sees shell commands only: an MCP server that returns personal data reaches the model in clear.
 
 > What each agent's hooks allow, and what `ranon init` writes: **[Agents](docs/agents.md)**
 

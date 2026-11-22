@@ -80,7 +80,7 @@ matcher = "^mcp__.*"
 hooks = [{ type = "command", command = "ranon hook codex || { echo 'ranon is missing or failed: output hidden' >&2; exit 2; }", timeout = 60 }]
 ```
 
-Codex runs a hook it has not seen only once you trust it: open `/hooks` in Codex and trust the ranon hook, then again after it changes.
+Codex runs a hook it has not seen only once you trust it: open `/hooks` in the CLI, or Settings > Hooks in the desktop app, and trust the ranon hook, then again after it changes. **Until it is trusted, MCP results reach the model in clear**: Codex skips an untrusted hook without blocking the call. The CLI and the desktop app share `~/.codex/config.toml` and the trust.
 
 `set` replaces the variable rather than prepending to it, so copy your current `PATH` after the shims (`echo "$HOME/.local/share/ranon/shims:$PATH"`). Without the writable root, the default `workspace-write` sandbox stops ranon from saving `map.tsv`: the command then prints `ranon: cannot save token map …, output hidden` instead of its output. That is safe but useless. The sandbox also blocks network access by default, so `psql` or `heroku` need it allowed as well.
 
@@ -88,7 +88,7 @@ Codex hooks cannot rewrite a tool result (`updatedMCPToolOutput` is parsed and n
 
 No real values are put back in MCP inputs: Codex accepts a rewritten input only with `permissionDecision: "allow"`, which would skip the approval it asks for MCP calls. The MCP server receives tokens.
 
-Checked with Codex CLI 0.153.4 (shims: a table of names and emails reached the model as tokens; hook: an MCP call came back as tokens) and 0.171.0 (hook: two MCP calls in a real session, the model read only tokens; with ranon missing, the result was hidden).
+Checked with Codex CLI 0.153.4 (shims: a table of names and emails reached the model as tokens; hook: an MCP call came back as tokens) and 0.171.0 (hook: two MCP calls in a real session, the model read only tokens; with ranon missing, the result was hidden). Also checked in the Codex desktop app (ChatGPT for macOS 26.1117, engine 0.171.0-alpha.13): before the hook was trusted the results went through in clear, once trusted the model read only tokens. Cloud tasks run neither hooks nor shims: ranon does not cover them.
 
 ### Cursor
 
