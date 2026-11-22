@@ -88,7 +88,7 @@ Codex hooks cannot rewrite a tool result (`updatedMCPToolOutput` is parsed and n
 
 No real values are put back in MCP inputs: Codex accepts a rewritten input only with `permissionDecision: "allow"`, which would skip the approval it asks for MCP calls. The MCP server receives tokens.
 
-Checked with Codex CLI 0.153.4 (shims: a table of names and emails reached the model as tokens) and 0.171.0 (hook: two MCP calls in a real session, the model read only tokens; with ranon missing, the result was hidden).
+Checked with Codex CLI 0.153.4 (shims: a table of names and emails reached the model as tokens; hook: an MCP call came back as tokens) and 0.171.0 (hook: two MCP calls in a real session, the model read only tokens; with ranon missing, the result was hidden).
 
 ### Cursor
 
