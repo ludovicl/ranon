@@ -134,7 +134,9 @@ pub fn run(options: &Options) -> Result<(), String> {
             println!("`ranon doctor` checks the hooks from the project root.");
         }
         if options.agent == Agent::Codex {
-            println!("Codex runs a new hook only once you trust it: open `/hooks` in Codex and trust the ranon hook.");
+            println!(
+                "Codex runs a new hook only once you trust it: `/hooks` in the CLI, Settings > Hooks in the desktop app. Until then MCP results reach the model in clear."
+            );
         }
         println!("Optional, to mask names in free text: `ranon dict build --sql \"select first_name from users …\"`.");
     }
