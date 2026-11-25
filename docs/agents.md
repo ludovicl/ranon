@@ -40,6 +40,10 @@ For Bash, only the outputs of `psql`, `heroku run`, `heroku logs`, `stripe` and 
 
 Two failures are out of ranon's reach, because Claude Code then keeps the raw output: a hook whose binary is missing, and a hook that times out. The third hook covers the first: it blocks Bash and MCP calls while `ranon` is not in `PATH`.
 
+Claude Code's `"onFailure": "block"` does not close the timeout gap: on a `PostToolUse` hook it adds an error for the model, but the raw output still reaches it (checked with Claude Code 2.1.330, 25/11/2026).
+
+**Code Mode.** In Code Mode (`CLAUDE_CODE_EXPERIMENTAL_CODE_MODE=1`), Claude writes JavaScript that calls its tools through a `REPL` tool. The hooks still run on each call the script makes, under the tool's usual name (`Read`, `Bash`, `mcp__…`), so the same matchers apply: a data file read from a script reached the model as tokens, with no real value in the session transcript (Claude Code 2.1.330, 25/11/2026).
+
 ## PATH shim (any agent)
 
 ```sh

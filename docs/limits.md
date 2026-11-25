@@ -9,6 +9,7 @@ ranon is a filter, not a security boundary.
 - What ranon masks in free text depends on what it has already seen: a name it has masked in a column is then recognized in prose, so the same output can be masked differently on a fresh state. `ranon dict build` closes most of the gap from the start.
 - Pseudonyms hide values, not the records around them. Ids, cities, amounts and dates stay readable on purpose, and together they can sometimes single a person out.
 - The hook only sees what a tool returns to the agent. Output sent to a file or produced by a background command, then read as a file, is not masked; neither is a tool missing from the hook's matcher. Pipe such output through `ranon mask` before it is written.
+- Content an MCP server hands over outside a tool call is not masked: skills served by MCP servers (Claude Code 2.1.332 and later) and MCP events that start an OpenCode automation (OpenCode 2.4 and later). Skills are instructions, so the risk is low; an event payload can hold customer data, so turn automations off with `"automations": false` in the OpenCode config if your MCP servers push events.
 - Read masks data files only: personal data in a source file, a Markdown note or a file without extension goes through. Screenshots are never masked.
 - Calling the real binary by absolute path bypasses the shim.
 - The agent runs as you, so it can read `map.tsv` and unmask everything; under Codex the writable root also lets it change the file. Keeping the state away from the agent takes a separate user or a sandbox that hides the directory.
